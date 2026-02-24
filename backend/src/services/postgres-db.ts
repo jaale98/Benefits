@@ -1241,15 +1241,20 @@ function toDateOnlyString(value: unknown): string {
   return new Date(raw).toISOString().slice(0, 10);
 }
 
-function parseDate(input: string): Date {
-  const date = new Date(`${input}T00:00:00.000Z`);
+function parseDate(input: string | Date): Date {
+  const normalized =
+    input instanceof Date
+      ? new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()))
+      : new Date(`${toDateOnlyString(input)}T00:00:00.000Z`);
+
+  const date = normalized;
   if (Number.isNaN(date.getTime())) {
-    throw new HttpError(400, `Invalid date value: ${input}`);
+    throw new HttpError(400, `Invalid date value: ${String(input)}`);
   }
   return date;
 }
 
-function calculateEffectiveDate(hireDateInput: string): string {
+function calculateEffectiveDate(hireDateInput: string | Date): string {
   const today = new Date();
   const hireDate = parseDate(hireDateInput);
 
