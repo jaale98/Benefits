@@ -6,8 +6,10 @@ This backend scaffold implements:
 - Invite-code signup (`COMPANY_ADMIN`, `EMPLOYEE`)
 - RBAC middleware
 - Tenant guard middleware
+- PostgreSQL-backed repository service (default runtime)
+- Transaction-safe enrollment submit flow
 - Core tenant/admin/employee MVP endpoints
-- In-memory persistence (for workflow scaffolding)
+- In-memory provider for integration tests
 
 ## Run
 
@@ -26,6 +28,11 @@ npm run dev
 
 Default URL: `http://localhost:4000`
 
+## DB Provider
+
+- Default: `DB_PROVIDER=postgres` (requires `DATABASE_URL`).
+- Test mode: `DB_PROVIDER=memory` (used by `npm test`).
+
 ## Seeded User
 
 From `.env`:
@@ -39,4 +46,4 @@ Use these credentials with `POST /auth/login`.
 
 - Database migration SQL is in `/db/migrations/001_init.sql`.
 - API contract is in `/docs/api/openapi.yaml`.
-- This is scaffold code and intentionally uses in-memory storage until DB repositories are wired.
+- Integration tests: `npm test`.

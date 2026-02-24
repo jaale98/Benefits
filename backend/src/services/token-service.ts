@@ -3,15 +3,14 @@ import { env } from '../config/env.js';
 import type { AuthUser } from '../types/auth.js';
 
 interface JwtPayload {
-  sub: string;
   email: string;
   role: AuthUser['role'];
   tenantId: string | null;
+  sub?: string;
 }
 
 export function signAccessToken(user: AuthUser): string {
   const payload: JwtPayload = {
-    sub: user.id,
     email: user.email,
     role: user.role,
     tenantId: user.tenantId,
@@ -27,6 +26,9 @@ export function signAccessToken(user: AuthUser): string {
 
 export function verifyAccessToken(token: string): AuthUser {
   const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+  if (!decoded.sub) {
+    throw new Error('Token missing subject');
+  }
 
   return {
     id: decoded.sub,

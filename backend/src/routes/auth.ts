@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/async-handler.js';
-import { db } from '../services/in-memory-db.js';
+import { db } from '../services/db.js';
 import { hashPassword, verifyPassword } from '../services/password-service.js';
 import { signAccessToken } from '../services/token-service.js';
 import { HttpError } from '../types/http-error.js';
@@ -24,7 +24,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const payload = loginSchema.parse(req.body);
 
-    const user = db.findUserByEmail(payload.email);
+    const user = await db.findUserByEmail(payload.email);
     if (!user || !user.isActive) {
       throw new HttpError(401, 'Invalid credentials');
     }
@@ -50,7 +50,7 @@ authRouter.post(
     const payload = signupWithInviteSchema.parse(req.body);
     const passwordHash = await hashPassword(payload.password);
 
-    const user = db.signupWithInvite({
+    const user = await db.signupWithInvite({
       code: payload.inviteCode,
       email: payload.email,
       passwordHash,

@@ -20,6 +20,7 @@ import type {
 } from '../types/domain.js';
 import { HttpError } from '../types/http-error.js';
 import { hashPassword } from './password-service.js';
+import type { DbAdapter } from './db.types.js';
 
 const COMPANY_ID_REGEX = /^[a-zA-Z0-9_-]{3,32}$/;
 
@@ -105,7 +106,7 @@ interface SubmitEnrollmentInput {
   enrollmentId: string;
 }
 
-class InMemoryDb {
+export class InMemoryDb implements DbAdapter {
   private initialized = false;
 
   private tenants: TenantRecord[] = [];
@@ -686,4 +687,3 @@ function calculateAgeOnDate(dob: Date, onDate: Date): number {
 }
 
 export const db = new InMemoryDb();
-export type { EmployeeProfileInput, EnrollmentElectionInput, PlanPremiumInput };

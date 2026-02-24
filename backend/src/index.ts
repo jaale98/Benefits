@@ -1,6 +1,6 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
-import { db } from './services/in-memory-db.js';
+import { db } from './services/db.js';
 
 async function bootstrap(): Promise<void> {
   await db.init();

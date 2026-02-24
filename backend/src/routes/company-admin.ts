@@ -4,7 +4,7 @@ import { asyncHandler } from '../middleware/async-handler.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRoles } from '../middleware/rbac.js';
 import { requireTenantAccess } from '../middleware/tenant-guard.js';
-import { db } from '../services/in-memory-db.js';
+import { db } from '../services/db.js';
 
 const employeeProfileSchema = z.object({
   employeeId: z.string().min(1).max(64),
@@ -57,7 +57,7 @@ companyAdminRouter.post(
     const payload = createEmployeeInviteSchema.parse(req.body ?? {});
     const tenantId = req.params.tenantId;
 
-    const inviteCode = db.createInviteCode({
+    const inviteCode = await db.createInviteCode({
       creatorUserId: req.user!.id,
       tenantId,
       targetRole: 'EMPLOYEE',
@@ -76,7 +76,7 @@ companyAdminRouter.put(
     const tenantId = req.params.tenantId;
     const employeeUserId = req.params.employeeUserId;
 
-    const profile = db.upsertEmployeeProfile(tenantId, employeeUserId, payload);
+    const profile = await db.upsertEmployeeProfile(tenantId, employeeUserId, payload);
     res.json({ profile });
   }),
 );
@@ -86,7 +86,7 @@ companyAdminRouter.post(
   asyncHandler(async (req, res) => {
     const payload = createPlanYearSchema.parse(req.body);
 
-    const planYear = db.createPlanYear({
+    const planYear = await db.createPlanYear({
       actorUserId: req.user!.id,
       tenantId: req.params.tenantId,
       name: payload.name,
@@ -103,7 +103,7 @@ companyAdminRouter.post(
   asyncHandler(async (req, res) => {
     const payload = createPlanSchema.parse(req.body);
 
-    const plan = db.createPlan({
+    const plan = await db.createPlan({
       tenantId: req.params.tenantId,
       planYearId: payload.planYearId,
       type: payload.type,
@@ -121,7 +121,7 @@ companyAdminRouter.put(
     const payload = setPremiumsSchema.parse(req.body);
     const planId = req.params.planId;
 
-    const premiums = db.replacePlanPremiums({
+    const premiums = await db.replacePlanPremiums({
       tenantId: req.params.tenantId,
       planId,
       tiers: payload.tiers,

@@ -7,13 +7,16 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "DB_PROVIDER=memory JWT_SECRET=test-jwt-secret-at-least-32-characters SEED_FULL_ADMIN_EMAIL=platform-admin@example.com SEED_FULL_ADMIN_PASSWORD=ChangeMe123! vitest run",
+    "test:watch": "DB_PROVIDER=memory JWT_SECRET=test-jwt-secret-at-least-32-characters SEED_FULL_ADMIN_EMAIL=platform-admin@example.com SEED_FULL_ADMIN_PASSWORD=ChangeMe123! vitest"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
     "uuid": "^11.1.0",
     "zod": "^3.24.1"
   },
@@ -22,7 +25,11 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.8",
     "@types/node": "^22.13.10",
+    "@types/pg": "^8.16.0",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.0.18"
   }
 }

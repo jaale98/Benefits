@@ -4,7 +4,7 @@ import { asyncHandler } from '../middleware/async-handler.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRoles } from '../middleware/rbac.js';
 import { requireTenantAccess } from '../middleware/tenant-guard.js';
-import { db } from '../services/in-memory-db.js';
+import { db } from '../services/db.js';
 import { HttpError } from '../types/http-error.js';
 
 const employeeProfileSchema = z.object({
@@ -56,7 +56,7 @@ employeeRouter.put(
     const payload = employeeProfileSchema.parse(req.body);
     const employeeUserId = resolveEmployeeUserId(req.user!, payload.employeeUserId);
 
-    const profile = db.upsertEmployeeProfile(req.params.tenantId, employeeUserId, payload);
+    const profile = await db.upsertEmployeeProfile(req.params.tenantId, employeeUserId, payload);
     res.json({ profile });
   }),
 );
@@ -67,7 +67,7 @@ employeeRouter.post(
     const payload = dependentSchema.parse(req.body);
     const employeeUserId = resolveEmployeeUserId(req.user!, payload.employeeUserId);
 
-    const dependent = db.addDependent({
+    const dependent = await db.addDependent({
       tenantId: req.params.tenantId,
       employeeUserId,
       relationship: payload.relationship,
@@ -86,7 +86,7 @@ employeeRouter.post(
     const payload = draftEnrollmentSchema.parse(req.body);
     const employeeUserId = resolveEmployeeUserId(req.user!, payload.employeeUserId);
 
-    const enrollment = db.createEnrollmentDraft({
+    const enrollment = await db.createEnrollmentDraft({
       tenantId: req.params.tenantId,
       employeeUserId,
       planYearId: payload.planYearId,
@@ -104,7 +104,7 @@ employeeRouter.post(
     const payload = submitEnrollmentSchema.parse(req.body ?? {});
     const employeeUserId = resolveEmployeeUserId(req.user!, payload.employeeUserId);
 
-    const enrollment = db.submitEnrollment({
+    const enrollment = await db.submitEnrollment({
       tenantId: req.params.tenantId,
       employeeUserId,
       enrollmentId: req.params.enrollmentId,
