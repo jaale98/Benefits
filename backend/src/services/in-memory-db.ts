@@ -565,6 +565,30 @@ export class InMemoryDb implements DbAdapter {
     });
 
     const now = this.nowIso();
+    const existingDrafts = this.enrollments.filter(
+      (candidate) =>
+        candidate.tenantId === input.tenantId &&
+        candidate.employeeUserId === input.employeeUserId &&
+        candidate.planYearId === input.planYearId &&
+        candidate.status === 'DRAFT',
+    );
+
+    if (existingDrafts.length > 0) {
+      const draft = existingDrafts[0];
+      const duplicateDraftIds = new Set(existingDrafts.slice(1).map((candidate) => candidate.id));
+      if (duplicateDraftIds.size > 0) {
+        this.enrollments = this.enrollments.filter((candidate) => !duplicateDraftIds.has(candidate.id));
+      }
+
+      draft.elections = electionSnapshots;
+      draft.dependentIds = [...input.dependentIds];
+      draft.effectiveDate = null;
+      draft.submittedAt = null;
+      draft.confirmationCode = null;
+      draft.updatedAt = now;
+      return draft;
+    }
+
     const enrollment: EnrollmentRecord = {
       id: uuidv4(),
       tenantId: input.tenantId,

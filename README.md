@@ -41,6 +41,7 @@ make migrate-backend
 - API Contract: `docs/api/openapi.yaml`
 - Dev stack guide: `docs/dev-stack.md`
 - Production-like compose profile: `docs/deploy.md`
+- Workable app stop point: `docs/workable-app-stop-point.md`
 
 ## App Packages
 

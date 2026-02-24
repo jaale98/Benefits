@@ -458,6 +458,7 @@ export interface paths {
                     severity?: "INFO" | "WARN" | "ERROR";
                     eventType?: string;
                     q?: string;
+                    export?: "json" | "csv";
                 };
                 header?: never;
                 path?: never;
@@ -465,7 +466,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Security events */
+                /** @description Security events (JSON or CSV export) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -475,6 +476,7 @@ export interface paths {
                             events?: components["schemas"]["SecurityEvent"][];
                             page?: components["schemas"]["PageInfo"];
                         };
+                        "text/csv": string;
                     };
                 };
             };
@@ -588,6 +590,7 @@ export interface paths {
                     severity?: "INFO" | "WARN" | "ERROR";
                     eventType?: string;
                     q?: string;
+                    export?: "json" | "csv";
                 };
                 header?: never;
                 path: {
@@ -597,7 +600,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Tenant security events */
+                /** @description Tenant security events (JSON or CSV export) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -607,6 +610,7 @@ export interface paths {
                             events?: components["schemas"]["SecurityEvent"][];
                             page?: components["schemas"]["PageInfo"];
                         };
+                        "text/csv": string;
                     };
                 };
             };

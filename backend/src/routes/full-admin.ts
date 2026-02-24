@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/async-handler.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRoles } from '../middleware/rbac.js';
 import { db } from '../services/db.js';
+import { formatSecurityEventsCsv } from '../services/security-events-csv.js';
 
 const createTenantSchema = z.object({
   name: z.string().min(1),
@@ -27,6 +28,7 @@ const listSecurityEventsSchema = z.object({
   severity: z.enum(['INFO', 'WARN', 'ERROR']).optional(),
   eventType: z.string().trim().max(120).optional(),
   q: z.string().trim().max(200).optional(),
+  export: z.enum(['json', 'csv']).optional(),
 });
 
 const fullAdminRouter = Router();
@@ -47,6 +49,25 @@ fullAdminRouter.get(
   '/security-events',
   asyncHandler(async (req, res) => {
     const query = listSecurityEventsSchema.parse(req.query);
+    const shouldExportCsv = query.export === 'csv';
+
+    if (shouldExportCsv) {
+      const events = await db.listSecurityEvents({
+        limit: Math.min(query.limit, 500),
+        offset: query.offset,
+        tenantId: query.tenantId,
+        severity: query.severity,
+        eventType: query.eventType,
+        q: query.q,
+      });
+
+      const csv = formatSecurityEventsCsv(events);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="full-admin-security-events.csv"');
+      res.status(200).send(csv);
+      return;
+    }
+
     const dbLimit = Math.min(query.limit + 1, 500);
     const events = await db.listSecurityEvents({
       limit: dbLimit,

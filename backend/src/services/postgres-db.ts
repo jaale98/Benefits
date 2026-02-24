@@ -632,14 +632,47 @@ export class PostgresDb implements DbAdapter {
         dependents: selectedDependents,
       });
 
-      const enrollmentResult = await client.query(
-        `INSERT INTO enrollments
-          (tenant_id, employee_user_id, plan_year_id, status, effective_date)
-         VALUES ($1, $2, $3, 'DRAFT', NULL)
-         RETURNING id`,
+      const existingDraftsResult = await client.query<{ id: string }>(
+        `SELECT id
+         FROM enrollments
+         WHERE tenant_id = $1
+           AND employee_user_id = $2
+           AND plan_year_id = $3
+           AND status = 'DRAFT'
+         ORDER BY created_at DESC
+         FOR UPDATE`,
         [input.tenantId, input.employeeUserId, input.planYearId],
       );
-      const enrollmentId = enrollmentResult.rows[0].id as string;
+
+      let enrollmentId: string;
+      if (existingDraftsResult.rowCount) {
+        enrollmentId = existingDraftsResult.rows[0].id;
+        const duplicateDraftIds = existingDraftsResult.rows.slice(1).map((row) => row.id);
+        if (duplicateDraftIds.length > 0) {
+          await client.query(`DELETE FROM enrollments WHERE id = ANY($1::uuid[])`, [duplicateDraftIds]);
+        }
+
+        await client.query(
+          `UPDATE enrollments
+           SET effective_date = NULL,
+               submitted_at = NULL,
+               confirmation_code = NULL,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [enrollmentId],
+        );
+        await client.query(`DELETE FROM enrollment_elections WHERE enrollment_id = $1`, [enrollmentId]);
+        await client.query(`DELETE FROM enrollment_dependents WHERE enrollment_id = $1`, [enrollmentId]);
+      } else {
+        const enrollmentResult = await client.query(
+          `INSERT INTO enrollments
+            (tenant_id, employee_user_id, plan_year_id, status, effective_date)
+           VALUES ($1, $2, $3, 'DRAFT', NULL)
+           RETURNING id`,
+          [input.tenantId, input.employeeUserId, input.planYearId],
+        );
+        enrollmentId = enrollmentResult.rows[0].id as string;
+      }
 
       for (const election of input.elections) {
         const planResult = await client.query(

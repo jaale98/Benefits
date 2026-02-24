@@ -946,9 +946,16 @@ paths:
           required: false
           schema:
             type: string
+        - name: export
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
       responses:
         '200':
-          description: Security events
+          description: Security events (JSON or CSV export)
           content:
             application/json:
               schema:
@@ -960,6 +967,9 @@ paths:
                       $ref: '#/components/schemas/SecurityEvent'
                   page:
                     $ref: '#/components/schemas/PageInfo'
+            text/csv:
+              schema:
+                type: string
 
   /tenants/{tenantId}/company-admin/users:
     get:
@@ -1080,9 +1090,16 @@ paths:
           required: false
           schema:
             type: string
+        - name: export
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
       responses:
         '200':
-          description: Tenant security events
+          description: Tenant security events (JSON or CSV export)
           content:
             application/json:
               schema:
@@ -1094,6 +1111,9 @@ paths:
                       $ref: '#/components/schemas/SecurityEvent'
                   page:
                     $ref: '#/components/schemas/PageInfo'
+            text/csv:
+              schema:
+                type: string
 
   /tenants/{tenantId}/company-admin/invite-codes/employee:
     post:

@@ -103,6 +103,14 @@ describe('API integration (MVP core flows)', () => {
     expect((pagedUsers.body.users as unknown[]).length).toBe(1);
     expect(pagedUsers.body.page.limit).toBe(1);
 
+    const companyAdminCsvEvents = await request(app)
+      .get(`/tenants/${tenantAId}/company-admin/security-events?limit=10&offset=0&export=csv`)
+      .set('Authorization', `Bearer ${companyAdminToken}`);
+    expect(companyAdminCsvEvents.status).toBe(200);
+    expect(companyAdminCsvEvents.headers['content-type']).toContain('text/csv');
+    expect(companyAdminCsvEvents.headers['content-disposition']).toContain('tenant-security-events.csv');
+    expect(companyAdminCsvEvents.text).toContain('"createdAt","severity","eventType"');
+
     const planYearStart = '2026-01-01';
     const planYearEnd = '2026-12-31';
 
@@ -242,6 +250,15 @@ describe('API integration (MVP core flows)', () => {
       });
 
     expect(validDraft.status).toBe(201);
+    expect(validDraft.body.enrollment.id).toBe(draftWithOverAgeChild.body.enrollment.id);
+
+    const enrollmentsAfterDraftReplace = await request(app)
+      .get(`/tenants/${tenantAId}/employee/enrollments`)
+      .set('Authorization', `Bearer ${employeeToken}`);
+
+    expect(enrollmentsAfterDraftReplace.status).toBe(200);
+    expect(enrollmentsAfterDraftReplace.body.enrollments).toHaveLength(1);
+    expect(enrollmentsAfterDraftReplace.body.enrollments[0].status).toBe('DRAFT');
 
     const validSubmit = await request(app)
       .post(`/tenants/${tenantAId}/employee/enrollments/${validDraft.body.enrollment.id}/submit`)

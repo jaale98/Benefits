@@ -28,6 +28,15 @@ describe('API integration (postgres provider)', () => {
     expect(eventTypes).toContain('AUTH_LOGIN_SUCCESS');
     expect(eventsResponse.body.page.limit).toBe(20);
     expect(eventsResponse.body.page.offset).toBe(0);
+
+    const csvEventsResponse = await request(app)
+      .get('/full-admin/security-events?limit=20&offset=0&severity=INFO&export=csv')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`);
+    expect(csvEventsResponse.status).toBe(200);
+    expect(csvEventsResponse.headers['content-type']).toContain('text/csv');
+    expect(csvEventsResponse.headers['content-disposition']).toContain('full-admin-security-events.csv');
+    expect(csvEventsResponse.text).toContain('"createdAt","severity","eventType"');
+    expect(csvEventsResponse.text).toContain('AUTH_LOGIN_SUCCESS');
   });
 
   it('rotates refresh tokens and rejects replayed refresh tokens', async () => {
@@ -178,5 +187,34 @@ describe('API integration (postgres provider)', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({});
     expect(submitResponse.status).toBe(422);
+
+    const underAgeChild = await request(app)
+      .post(`/tenants/${tenantId}/employee/dependents`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        relationship: 'CHILD',
+        firstName: 'Younger',
+        lastName: 'Child',
+        dob: '2015-05-01',
+      });
+    expect(underAgeChild.status).toBe(201);
+
+    const replacedDraftResponse = await request(app)
+      .post(`/tenants/${tenantId}/employee/enrollments/draft`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        planYearId,
+        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_CHILDREN' }],
+        dependentIds: [underAgeChild.body.dependent.id],
+      });
+    expect(replacedDraftResponse.status).toBe(201);
+    expect(replacedDraftResponse.body.enrollment.id).toBe(draftResponse.body.enrollment.id);
+
+    const enrollmentsResponse = await request(app)
+      .get(`/tenants/${tenantId}/employee/enrollments`)
+      .set('Authorization', `Bearer ${employeeToken}`);
+    expect(enrollmentsResponse.status).toBe(200);
+    expect(enrollmentsResponse.body.enrollments).toHaveLength(1);
+    expect(enrollmentsResponse.body.enrollments[0].status).toBe('DRAFT');
   });
 });
