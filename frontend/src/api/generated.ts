@@ -338,7 +338,10 @@ export interface paths {
         /** List all tenants */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    limit?: number;
+                    offset?: number;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -353,6 +356,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             tenants?: components["schemas"]["Tenant"][];
+                            page?: components["schemas"]["PageInfo"];
                         };
                     };
                 };
@@ -450,6 +454,10 @@ export interface paths {
                 query?: {
                     tenantId?: string;
                     limit?: number;
+                    offset?: number;
+                    severity?: "INFO" | "WARN" | "ERROR";
+                    eventType?: string;
+                    q?: string;
                 };
                 header?: never;
                 path?: never;
@@ -465,6 +473,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             events?: components["schemas"]["SecurityEvent"][];
+                            page?: components["schemas"]["PageInfo"];
                         };
                     };
                 };
@@ -490,6 +499,8 @@ export interface paths {
             parameters: {
                 query?: {
                     role?: "COMPANY_ADMIN" | "EMPLOYEE";
+                    limit?: number;
+                    offset?: number;
                 };
                 header?: never;
                 path: {
@@ -507,6 +518,47 @@ export interface paths {
                     content: {
                         "application/json": {
                             users?: components["schemas"]["User"][];
+                            page?: components["schemas"]["PageInfo"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/company-admin/employee-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List employee profiles */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tenantId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Employee profile list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            profiles?: components["schemas"]["EmployeeProfile"][];
                         };
                     };
                 };
@@ -532,6 +584,10 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
+                    offset?: number;
+                    severity?: "INFO" | "WARN" | "ERROR";
+                    eventType?: string;
+                    q?: string;
                 };
                 header?: never;
                 path: {
@@ -549,6 +605,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             events?: components["schemas"]["SecurityEvent"][];
+                            page?: components["schemas"]["PageInfo"];
                         };
                     };
                 };
@@ -1284,6 +1341,13 @@ export interface components {
             } | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        PageInfo: {
+            limit: number;
+            offset: number;
+            returned: number;
+            hasMore: boolean;
+            nextOffset: number | null;
         };
         EmployeeProfileInput: {
             /**

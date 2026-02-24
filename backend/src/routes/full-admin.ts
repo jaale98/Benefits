@@ -15,9 +15,18 @@ const createCompanyAdminInviteSchema = z.object({
   maxUses: z.number().int().positive().optional(),
 });
 
+const listTenantsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(25),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+
 const listSecurityEventsSchema = z.object({
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  limit: z.coerce.number().int().positive().max(200).default(25),
+  offset: z.coerce.number().int().nonnegative().default(0),
   tenantId: z.string().uuid().optional(),
+  severity: z.enum(['INFO', 'WARN', 'ERROR']).optional(),
+  eventType: z.string().trim().max(120).optional(),
+  q: z.string().trim().max(200).optional(),
 });
 
 const fullAdminRouter = Router();
@@ -26,9 +35,11 @@ fullAdminRouter.use(authenticate, requireRoles('FULL_ADMIN'));
 
 fullAdminRouter.get(
   '/tenants',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const query = listTenantsQuerySchema.parse(req.query);
     const tenants = await db.listTenants();
-    res.json({ tenants });
+    const page = paginateList(tenants, query.limit, query.offset);
+    res.json({ tenants: page.items, page: page.meta });
   }),
 );
 
@@ -36,12 +47,28 @@ fullAdminRouter.get(
   '/security-events',
   asyncHandler(async (req, res) => {
     const query = listSecurityEventsSchema.parse(req.query);
+    const dbLimit = Math.min(query.limit + 1, 500);
     const events = await db.listSecurityEvents({
-      limit: query.limit,
+      limit: dbLimit,
+      offset: query.offset,
       tenantId: query.tenantId,
+      severity: query.severity,
+      eventType: query.eventType,
+      q: query.q,
     });
 
-    res.json({ events });
+    const hasMore = events.length > query.limit;
+    const items = hasMore ? events.slice(0, query.limit) : events;
+    res.json({
+      events: items,
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        returned: items.length,
+        hasMore,
+        nextOffset: hasMore ? query.offset + query.limit : null,
+      },
+    });
   }),
 );
 
@@ -75,5 +102,23 @@ fullAdminRouter.post(
     res.status(201).json({ inviteCode });
   }),
 );
+
+function paginateList<T>(items: T[], limit: number, offset: number): {
+  items: T[];
+  meta: { limit: number; offset: number; returned: number; hasMore: boolean; nextOffset: number | null };
+} {
+  const pagedItems = items.slice(offset, offset + limit);
+  const hasMore = offset + limit < items.length;
+  return {
+    items: pagedItems,
+    meta: {
+      limit,
+      offset,
+      returned: pagedItems.length,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+    },
+  };
+}
 
 export { fullAdminRouter };

@@ -130,6 +130,15 @@ export interface CreateSecurityEventInput {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ListSecurityEventsInput {
+  tenantId?: string;
+  limit?: number;
+  offset?: number;
+  severity?: 'INFO' | 'WARN' | 'ERROR';
+  eventType?: string;
+  q?: string;
+}
+
 export type MaybePromise<T> = T | Promise<T>;
 
 export interface DbAdapter {
@@ -162,10 +171,11 @@ export interface DbAdapter {
   markPasswordResetTokenUsed(tokenId: string): MaybePromise<void>;
   updateUserPasswordHash(userId: string, passwordHash: string): MaybePromise<void>;
   listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): MaybePromise<UserRecord[]>;
+  listEmployeeProfiles(tenantId: string): MaybePromise<EmployeeProfileRecord[]>;
   listPlanYears(tenantId: string): MaybePromise<PlanYearRecord[]>;
   listPlans(tenantId: string, planYearId?: string): MaybePromise<PlanRecord[]>;
   listEmployeeDependents(tenantId: string, employeeUserId: string): MaybePromise<DependentRecord[]>;
   listEmployeeEnrollments(tenantId: string, employeeUserId: string): MaybePromise<EnrollmentRecord[]>;
   createSecurityEvent(input: CreateSecurityEventInput): MaybePromise<SecurityEventRecord>;
-  listSecurityEvents(input?: { tenantId?: string; limit?: number }): MaybePromise<SecurityEventRecord[]>;
+  listSecurityEvents(input?: ListSecurityEventsInput): MaybePromise<SecurityEventRecord[]>;
 }

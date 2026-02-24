@@ -20,12 +20,14 @@ describe('API integration (postgres provider)', () => {
     expect(typeof loginResponse.body.user.sessionId).toBe('string');
 
     const eventsResponse = await request(app)
-      .get('/full-admin/security-events?limit=20')
+      .get('/full-admin/security-events?limit=20&offset=0&severity=INFO')
       .set('Authorization', `Bearer ${loginResponse.body.accessToken as string}`);
 
     expect(eventsResponse.status).toBe(200);
     const eventTypes = (eventsResponse.body.events as Array<{ eventType?: string }>).map((event) => event.eventType);
     expect(eventTypes).toContain('AUTH_LOGIN_SUCCESS');
+    expect(eventsResponse.body.page.limit).toBe(20);
+    expect(eventsResponse.body.page.offset).toBe(0);
   });
 
   it('rotates refresh tokens and rejects replayed refresh tokens', async () => {

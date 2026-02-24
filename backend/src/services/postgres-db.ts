@@ -168,6 +168,21 @@ export class PostgresDb implements DbAdapter {
     return result.rows.map(mapUser);
   }
 
+  async listEmployeeProfiles(tenantId: string): Promise<EmployeeProfileRecord[]> {
+    const result = await this.pool.query(
+      `SELECT
+         user_id, tenant_id, employee_id, first_name, last_name,
+         dob, hire_date, salary_amount, benefit_class, employment_status,
+         created_at, updated_at
+       FROM employee_profiles
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC`,
+      [tenantId],
+    );
+
+    return result.rows.map(mapEmployeeProfile);
+  }
+
   async listPlanYears(tenantId: string): Promise<PlanYearRecord[]> {
     const result = await this.pool.query(
       `SELECT
@@ -248,19 +263,58 @@ export class PostgresDb implements DbAdapter {
     return mapSecurityEvent(result.rows[0]);
   }
 
-  async listSecurityEvents(input?: { tenantId?: string; limit?: number }): Promise<SecurityEventRecord[]> {
+  async listSecurityEvents(input?: {
+    tenantId?: string;
+    limit?: number;
+    offset?: number;
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    eventType?: string;
+    q?: string;
+  }): Promise<SecurityEventRecord[]> {
     const limit = Math.min(Math.max(input?.limit ?? 100, 1), 500);
+    const offset = Math.max(input?.offset ?? 0, 0);
     const values: unknown[] = [];
-    let whereClause = '';
+    const conditions: string[] = [];
 
     if (input?.tenantId) {
       values.push(input.tenantId);
-      whereClause = `WHERE tenant_id = $${values.length}`;
+      conditions.push(`tenant_id = $${values.length}`);
     }
 
+    if (input?.severity) {
+      values.push(input.severity);
+      conditions.push(`severity = $${values.length}`);
+    }
+
+    if (input?.eventType?.trim()) {
+      values.push(`%${input.eventType.trim()}%`);
+      conditions.push(`event_type ILIKE $${values.length}`);
+    }
+
+    if (input?.q?.trim()) {
+      values.push(`%${input.q.trim()}%`);
+      const qParam = `$${values.length}`;
+      conditions.push(
+        `(event_type ILIKE ${qParam} OR severity ILIKE ${qParam} OR COALESCE(user_id::text, '') ILIKE ${qParam} OR COALESCE(tenant_id::text, '') ILIKE ${qParam} OR COALESCE(metadata::text, '') ILIKE ${qParam})`,
+      );
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
     values.push(limit);
+    const limitParam = `$${values.length}`;
+    values.push(offset);
+    const offsetParam = `$${values.length}`;
+
     const result = await this.pool.query(
-      `SELECT\n         id, user_id, tenant_id, event_type, severity,\n         ip_address, user_agent, metadata, created_at\n       FROM security_events\n       ${whereClause}\n       ORDER BY created_at DESC\n       LIMIT $${values.length}`,
+      `SELECT
+         id, user_id, tenant_id, event_type, severity,
+         ip_address, user_agent, metadata, created_at
+       FROM security_events
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ${limitParam}
+       OFFSET ${offsetParam}`,
       values,
     );
 

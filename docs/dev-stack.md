@@ -20,6 +20,10 @@ Stop:
 make dev-down
 ```
 
+## Production-like profile
+
+See `/docs/deploy.md` for the compose-based production profile.
+
 ## One-command Postgres boot
 
 From repo root:

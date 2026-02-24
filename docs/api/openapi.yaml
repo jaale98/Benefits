@@ -248,6 +248,21 @@ components:
           type: string
           format: date-time
 
+    PageInfo:
+      type: object
+      required: [limit, offset, returned, hasMore, nextOffset]
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        returned:
+          type: integer
+        hasMore:
+          type: boolean
+        nextOffset:
+          type: [integer, 'null']
+
     EmployeeProfileInput:
       type: object
       required:
@@ -803,6 +818,22 @@ paths:
       summary: List all tenants
       security:
         - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 25
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Tenant list
@@ -815,6 +846,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Tenant'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -888,7 +921,31 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 500
+            maximum: 200
+            default: 25
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INFO, WARN, ERROR]
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Security events
@@ -901,6 +958,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/SecurityEvent'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
 
   /tenants/{tenantId}/company-admin/users:
     get:
@@ -921,6 +980,21 @@ paths:
           schema:
             type: string
             enum: [COMPANY_ADMIN, EMPLOYEE]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 25
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Users list
@@ -933,6 +1007,34 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/User'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
+
+  /tenants/{tenantId}/company-admin/employee-profiles:
+    get:
+      tags: [Company Admin]
+      summary: List employee profiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Employee profile list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EmployeeProfile'
 
   /tenants/{tenantId}/company-admin/security-events:
     get:
@@ -953,7 +1055,31 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 500
+            maximum: 200
+            default: 25
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INFO, WARN, ERROR]
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Tenant security events
@@ -966,6 +1092,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/SecurityEvent'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
 
   /tenants/{tenantId}/company-admin/invite-codes/employee:
     post:

@@ -24,6 +24,8 @@ const createEmployeeInviteSchema = z.object({
 
 const listUsersQuerySchema = z.object({
   role: z.enum(['COMPANY_ADMIN', 'EMPLOYEE']).optional(),
+  limit: z.coerce.number().int().positive().max(200).default(25),
+  offset: z.coerce.number().int().nonnegative().default(0),
 });
 
 const listPlansQuerySchema = z.object({
@@ -31,7 +33,11 @@ const listPlansQuerySchema = z.object({
 });
 
 const listSecurityEventsSchema = z.object({
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  limit: z.coerce.number().int().positive().max(200).default(25),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  severity: z.enum(['INFO', 'WARN', 'ERROR']).optional(),
+  eventType: z.string().trim().max(120).optional(),
+  q: z.string().trim().max(200).optional(),
 });
 
 const createPlanYearSchema = z.object({
@@ -68,7 +74,16 @@ companyAdminRouter.get(
   asyncHandler(async (req, res) => {
     const query = listUsersQuerySchema.parse(req.query);
     const users = await db.listTenantUsers(req.params.tenantId, query.role);
-    res.json({ users });
+    const page = paginateList(users, query.limit, query.offset);
+    res.json({ users: page.items, page: page.meta });
+  }),
+);
+
+companyAdminRouter.get(
+  '/employee-profiles',
+  asyncHandler(async (req, res) => {
+    const profiles = await db.listEmployeeProfiles(req.params.tenantId);
+    res.json({ profiles });
   }),
 );
 
@@ -76,11 +91,28 @@ companyAdminRouter.get(
   '/security-events',
   asyncHandler(async (req, res) => {
     const query = listSecurityEventsSchema.parse(req.query);
+    const dbLimit = Math.min(query.limit + 1, 500);
     const events = await db.listSecurityEvents({
       tenantId: req.params.tenantId,
-      limit: query.limit,
+      limit: dbLimit,
+      offset: query.offset,
+      severity: query.severity,
+      eventType: query.eventType,
+      q: query.q,
     });
-    res.json({ events });
+
+    const hasMore = events.length > query.limit;
+    const items = hasMore ? events.slice(0, query.limit) : events;
+    res.json({
+      events: items,
+      page: {
+        limit: query.limit,
+        offset: query.offset,
+        returned: items.length,
+        hasMore,
+        nextOffset: hasMore ? query.offset + query.limit : null,
+      },
+    });
   }),
 );
 
@@ -180,5 +212,23 @@ companyAdminRouter.put(
     res.json({ premiums });
   }),
 );
+
+function paginateList<T>(items: T[], limit: number, offset: number): {
+  items: T[];
+  meta: { limit: number; offset: number; returned: number; hasMore: boolean; nextOffset: number | null };
+} {
+  const pagedItems = items.slice(offset, offset + limit);
+  const hasMore = offset + limit < items.length;
+  return {
+    items: pagedItems,
+    meta: {
+      limit,
+      offset,
+      returned: pagedItems.length,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+    },
+  };
+}
 
 export { companyAdminRouter };

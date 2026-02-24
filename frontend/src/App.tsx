@@ -6,14 +6,17 @@ type Role = 'FULL_ADMIN' | 'COMPANY_ADMIN' | 'EMPLOYEE';
 type SessionUser = components['schemas']['AuthUser'];
 type Tenant = components['schemas']['Tenant'];
 type User = components['schemas']['User'];
+type EmployeeProfile = components['schemas']['EmployeeProfile'];
 type PlanYear = components['schemas']['PlanYear'];
 type Plan = components['schemas']['Plan'];
 type Dependent = components['schemas']['Dependent'];
 type Enrollment = components['schemas']['Enrollment'];
 type SecurityEvent = components['schemas']['SecurityEvent'];
+type PageInfo = components['schemas']['PageInfo'];
 
 const DEFAULT_LOGIN_EMAIL = 'platform-admin@example.com';
 const DEFAULT_LOGIN_PASSWORD = 'ChangeMe123!';
+const PAGE_SIZE = 25;
 
 export function App() {
   const [apiBaseUrl, setApiBaseUrl] = useState(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000');
@@ -39,12 +42,24 @@ export function App() {
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantUsers, setTenantUsers] = useState<User[]>([]);
+  const [employeeProfiles, setEmployeeProfiles] = useState<EmployeeProfile[]>([]);
   const [planYears, setPlanYears] = useState<PlanYear[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [dependents, setDependents] = useState<Dependent[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [fullAdminSecurityEvents, setFullAdminSecurityEvents] = useState<SecurityEvent[]>([]);
   const [companyAdminSecurityEvents, setCompanyAdminSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [tenantPage, setTenantPage] = useState<PageInfo | null>(null);
+  const [tenantUsersPage, setTenantUsersPage] = useState<PageInfo | null>(null);
+  const [fullAdminSecurityPage, setFullAdminSecurityPage] = useState<PageInfo | null>(null);
+  const [companyAdminSecurityPage, setCompanyAdminSecurityPage] = useState<PageInfo | null>(null);
+  const [tenantOffset, setTenantOffset] = useState(0);
+  const [tenantUsersOffset, setTenantUsersOffset] = useState(0);
+  const [fullAdminSecurityOffset, setFullAdminSecurityOffset] = useState(0);
+  const [companyAdminSecurityOffset, setCompanyAdminSecurityOffset] = useState(0);
+  const [securitySeverityFilter, setSecuritySeverityFilter] = useState<'INFO' | 'WARN' | 'ERROR' | ''>('');
+  const [securityEventTypeFilter, setSecurityEventTypeFilter] = useState('');
+  const [securityQueryFilter, setSecurityQueryFilter] = useState('');
 
   const [tenantName, setTenantName] = useState('');
   const [tenantCompanyId, setTenantCompanyId] = useState('');
@@ -110,7 +125,16 @@ export function App() {
     }
 
     void refreshReferenceData();
-  }, [user]);
+  }, [
+    user,
+    tenantOffset,
+    tenantUsersOffset,
+    fullAdminSecurityOffset,
+    companyAdminSecurityOffset,
+    securitySeverityFilter,
+    securityEventTypeFilter,
+    securityQueryFilter,
+  ]);
 
   useEffect(() => {
     if (!selectedPlanYearId && planYears.length > 0) {
@@ -165,13 +189,25 @@ export function App() {
 
     if (user.role === 'FULL_ADMIN') {
       const [tenantResponse, securityEventResponse] = await Promise.all([
-        api.listTenants(),
-        api.listFullAdminSecurityEvents(50),
+        api.listTenants(PAGE_SIZE, tenantOffset),
+        api.listFullAdminSecurityEvents({
+          limit: PAGE_SIZE,
+          offset: fullAdminSecurityOffset,
+          severity: securitySeverityFilter || undefined,
+          eventType: securityEventTypeFilter || undefined,
+          q: securityQueryFilter || undefined,
+        }),
       ]);
       const nextTenants = tenantResponse.tenants ?? [];
       setTenants(nextTenants);
+      setTenantPage(tenantResponse.page ?? null);
       setFullAdminSecurityEvents(securityEventResponse.events ?? []);
+      setFullAdminSecurityPage(securityEventResponse.page ?? null);
       setCompanyAdminSecurityEvents([]);
+      setCompanyAdminSecurityPage(null);
+      setTenantUsers([]);
+      setTenantUsersPage(null);
+      setEmployeeProfiles([]);
       if (!selectedTenantId && nextTenants.length > 0) {
         setSelectedTenantId(nextTenants[0].id ?? '');
       }
@@ -183,18 +219,30 @@ export function App() {
     }
 
     if (user.role === 'COMPANY_ADMIN') {
-      const [usersResponse, planYearsResponse, plansResponse, securityEventsResponse] = await Promise.all([
-        api.listTenantUsers(tenantId, 'EMPLOYEE'),
+      const [usersResponse, profilesResponse, planYearsResponse, plansResponse, securityEventsResponse] = await Promise.all([
+        api.listTenantUsers(tenantId, 'EMPLOYEE', PAGE_SIZE, tenantUsersOffset),
+        api.listEmployeeProfilesAsCompanyAdmin(tenantId),
         api.listPlanYearsAsCompanyAdmin(tenantId),
         api.listPlansAsCompanyAdmin(tenantId),
-        api.listCompanyAdminSecurityEvents(tenantId, 50),
+        api.listCompanyAdminSecurityEvents(tenantId, {
+          limit: PAGE_SIZE,
+          offset: companyAdminSecurityOffset,
+          severity: securitySeverityFilter || undefined,
+          eventType: securityEventTypeFilter || undefined,
+          q: securityQueryFilter || undefined,
+        }),
       ]);
 
       setTenantUsers(usersResponse.users ?? []);
+      setTenantUsersPage(usersResponse.page ?? null);
+      setEmployeeProfiles(profilesResponse.profiles ?? []);
       setPlanYears(planYearsResponse.planYears ?? []);
       setPlans(plansResponse.plans ?? []);
       setCompanyAdminSecurityEvents(securityEventsResponse.events ?? []);
+      setCompanyAdminSecurityPage(securityEventsResponse.page ?? null);
       setFullAdminSecurityEvents([]);
+      setFullAdminSecurityPage(null);
+      setTenantPage(null);
 
       if (!selectedEmployeeUserId && (usersResponse.users ?? []).length > 0) {
         setSelectedEmployeeUserId(usersResponse.users?.[0]?.id ?? '');
@@ -213,6 +261,11 @@ export function App() {
     setPlans(plansResponse.plans ?? []);
     setDependents(dependentsResponse.dependents ?? []);
     setEnrollments(enrollmentsResponse.enrollments ?? []);
+    setTenantPage(null);
+    setTenantUsersPage(null);
+    setFullAdminSecurityPage(null);
+    setCompanyAdminSecurityPage(null);
+    setEmployeeProfiles([]);
     setFullAdminSecurityEvents([]);
     setCompanyAdminSecurityEvents([]);
 
@@ -229,6 +282,10 @@ export function App() {
       setResetEmail(loginEmail);
       setResetToken('');
       setResetNewPassword('');
+      setTenantOffset(0);
+      setTenantUsersOffset(0);
+      setFullAdminSecurityOffset(0);
+      setCompanyAdminSecurityOffset(0);
     });
   }
 
@@ -249,6 +306,10 @@ export function App() {
         setSignupInviteCode('');
         setSignupEmail('');
         setSignupPassword('');
+        setTenantOffset(0);
+        setTenantUsersOffset(0);
+        setFullAdminSecurityOffset(0);
+        setCompanyAdminSecurityOffset(0);
       },
     );
   }
@@ -259,14 +320,26 @@ export function App() {
       setTokens(null);
       setTenants([]);
       setTenantUsers([]);
+      setEmployeeProfiles([]);
       setPlanYears([]);
       setPlans([]);
       setDependents([]);
       setEnrollments([]);
       setFullAdminSecurityEvents([]);
       setCompanyAdminSecurityEvents([]);
+      setTenantPage(null);
+      setTenantUsersPage(null);
+      setFullAdminSecurityPage(null);
+      setCompanyAdminSecurityPage(null);
       setLatestCompanyAdminInviteCode('');
       setLatestEmployeeInviteCode('');
+      setTenantOffset(0);
+      setTenantUsersOffset(0);
+      setFullAdminSecurityOffset(0);
+      setCompanyAdminSecurityOffset(0);
+      setSecuritySeverityFilter('');
+      setSecurityEventTypeFilter('');
+      setSecurityQueryFilter('');
     });
   }
 
@@ -504,6 +577,37 @@ export function App() {
     await runAction('Confirm password reset', () => api.confirmPasswordReset(resetToken, resetNewPassword));
   }
 
+  function exportSecurityEventsCsv(events: SecurityEvent[]) {
+    if (events.length === 0) {
+      setError('No security events to export.');
+      return;
+    }
+
+    const header = ['createdAt', 'severity', 'eventType', 'userId', 'tenantId', 'ipAddress', 'userAgent', 'metadata'];
+    const rows = events.map((event) => [
+      event.createdAt,
+      event.severity,
+      event.eventType,
+      event.userId ?? '',
+      event.tenantId ?? '',
+      event.ipAddress ?? '',
+      event.userAgent ?? '',
+      JSON.stringify(event.metadata ?? {}),
+    ]);
+
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `security-events-${Date.now()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function buildEmployeeProfilePayload(): components['schemas']['EmployeeProfileInput'] {
     return {
       employeeId,
@@ -554,8 +658,35 @@ export function App() {
           </section>
 
           <section className="panel">
+            <h2>Tenants</h2>
+            {tenants.length === 0 ? (
+              <p>No tenants in this page.</p>
+            ) : (
+              <ul className="compact-list">
+                {tenants.map((tenant) => (
+                  <li key={tenant.id}>
+                    {tenant.name} ({tenant.companyId})
+                  </li>
+                ))}
+              </ul>
+            )}
+            {renderPageControls(tenantPage, () => setTenantOffset(Math.max(tenantOffset - PAGE_SIZE, 0)), () => setTenantOffset(tenantOffset + PAGE_SIZE))}
+          </section>
+
+          <section className="panel">
             <h2>Recent Security Events</h2>
+            {renderSecurityFilters()}
+            <div className="nav-list">
+              <button type="button" onClick={() => exportSecurityEventsCsv(fullAdminSecurityEvents)}>
+                Export CSV
+              </button>
+            </div>
             {renderSecurityEventList(fullAdminSecurityEvents)}
+            {renderPageControls(
+              fullAdminSecurityPage,
+              () => setFullAdminSecurityOffset(Math.max(fullAdminSecurityOffset - PAGE_SIZE, 0)),
+              () => setFullAdminSecurityOffset(fullAdminSecurityOffset + PAGE_SIZE),
+            )}
           </section>
         </>
       );
@@ -589,6 +720,35 @@ export function App() {
               {renderEmployeeProfileFields()}
               <button disabled={loading || !selectedEmployeeUserId}>Save Employee Profile</button>
             </form>
+          </section>
+
+          <section className="panel">
+            <h2>Employee Roster</h2>
+            {tenantUsers.length === 0 ? (
+              <p>No employee users in this page.</p>
+            ) : (
+              <ul className="compact-list">
+                {tenantUsers.map((tenantUser) => {
+                  const profile = employeeProfiles.find((candidate) => candidate.userId === tenantUser.id);
+                  const completeness = profile ? 'Complete' : 'Missing Profile';
+                  const eligibility =
+                    profile && profile.benefitClass === 'FULL_TIME_ELIGIBLE' && profile.employmentStatus === 'ACTIVE'
+                      ? 'Eligible'
+                      : 'Ineligible';
+
+                  return (
+                    <li key={tenantUser.id}>
+                      {tenantUser.email} | {completeness} | {eligibility}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {renderPageControls(
+              tenantUsersPage,
+              () => setTenantUsersOffset(Math.max(tenantUsersOffset - PAGE_SIZE, 0)),
+              () => setTenantUsersOffset(tenantUsersOffset + PAGE_SIZE),
+            )}
           </section>
 
           <section className="panel">
@@ -675,14 +835,29 @@ export function App() {
 
           <section className="panel">
             <h2>Recent Security Events</h2>
+            {renderSecurityFilters()}
+            <div className="nav-list">
+              <button type="button" onClick={() => exportSecurityEventsCsv(companyAdminSecurityEvents)}>
+                Export CSV
+              </button>
+            </div>
             {renderSecurityEventList(companyAdminSecurityEvents)}
+            {renderPageControls(
+              companyAdminSecurityPage,
+              () => setCompanyAdminSecurityOffset(Math.max(companyAdminSecurityOffset - PAGE_SIZE, 0)),
+              () => setCompanyAdminSecurityOffset(companyAdminSecurityOffset + PAGE_SIZE),
+            )}
           </section>
         </>
       );
     }
 
     const filteredDraftPlans = plans.filter((plan) => plan.planYearId === draftPlanYearId);
+    const submittedEnrollmentForDraftPlanYear = enrollments.find(
+      (enrollment) => enrollment.planYearId === draftPlanYearId && enrollment.status === 'SUBMITTED',
+    );
     const selectedEnrollment = enrollments.find((enrollment) => enrollment.id === selectedEnrollmentId) ?? null;
+    const selectedEnrollmentIsSubmitted = selectedEnrollment?.status === 'SUBMITTED';
 
     return (
       <>
@@ -756,6 +931,7 @@ export function App() {
                 const nextIds = Array.from(event.target.selectedOptions).map((option) => option.value);
                 setSelectedDependentIds(nextIds);
               }}
+              disabled={Boolean(submittedEnrollmentForDraftPlanYear)}
             >
               {dependents.map((dependent) => (
                 <option key={dependent.id} value={dependent.id}>
@@ -764,8 +940,13 @@ export function App() {
               ))}
             </select>
 
-            <button disabled={loading || !draftPlanId || !draftPlanYearId}>Create Draft</button>
+            <button disabled={loading || !draftPlanId || !draftPlanYearId || Boolean(submittedEnrollmentForDraftPlanYear)}>
+              Create Draft
+            </button>
           </form>
+          {submittedEnrollmentForDraftPlanYear && (
+            <p>Enrollment is locked for this plan year because a submitted election already exists.</p>
+          )}
         </section>
 
         <section className="panel">
@@ -780,8 +961,9 @@ export function App() {
                 </option>
               ))}
             </select>
-            <button disabled={loading || !selectedEnrollmentId}>Submit Enrollment</button>
+            <button disabled={loading || !selectedEnrollmentId || selectedEnrollmentIsSubmitted}>Submit Enrollment</button>
           </form>
+          {selectedEnrollmentIsSubmitted && <p>This enrollment is already submitted and cannot be changed.</p>}
         </section>
 
         <section className="panel">
@@ -791,6 +973,7 @@ export function App() {
               <p>Status: {selectedEnrollment.status}</p>
               <p>Effective Date: {selectedEnrollment.effectiveDate ?? 'Pending submit'}</p>
               <p>Confirmation: {selectedEnrollment.confirmationCode ?? 'Not submitted'}</p>
+              {selectedEnrollment.status === 'SUBMITTED' && <p>Locked: submitted enrollments are read-only.</p>}
               <p>
                 Total Employee Monthly: $
                 {selectedEnrollment.elections
@@ -853,6 +1036,86 @@ export function App() {
           </li>
         ))}
       </ul>
+    );
+  }
+
+  function renderSecurityFilters() {
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <label>Severity</label>
+        <select
+          value={securitySeverityFilter}
+          onChange={(event) => {
+            setSecuritySeverityFilter(event.target.value as 'INFO' | 'WARN' | 'ERROR' | '');
+            setFullAdminSecurityOffset(0);
+            setCompanyAdminSecurityOffset(0);
+          }}
+        >
+          <option value="">All</option>
+          <option value="INFO">INFO</option>
+          <option value="WARN">WARN</option>
+          <option value="ERROR">ERROR</option>
+        </select>
+
+        <label>Event Type Contains</label>
+        <input
+          value={securityEventTypeFilter}
+          onChange={(event) => {
+            setSecurityEventTypeFilter(event.target.value);
+            setFullAdminSecurityOffset(0);
+            setCompanyAdminSecurityOffset(0);
+          }}
+        />
+
+        <label>Search</label>
+        <input
+          value={securityQueryFilter}
+          onChange={(event) => {
+            setSecurityQueryFilter(event.target.value);
+            setFullAdminSecurityOffset(0);
+            setCompanyAdminSecurityOffset(0);
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={() => {
+            setSecuritySeverityFilter('');
+            setSecurityEventTypeFilter('');
+            setSecurityQueryFilter('');
+            setFullAdminSecurityOffset(0);
+            setCompanyAdminSecurityOffset(0);
+          }}
+        >
+          Clear Filters
+        </button>
+      </form>
+    );
+  }
+
+  function renderPageControls(page: PageInfo | null, onPrevious: () => void, onNext: () => void) {
+    if (!page) {
+      return null;
+    }
+
+    return (
+      <div className="nav-list">
+        <p>
+          Offset {page.offset} | Returned {page.returned}
+        </p>
+        <div className="inline-actions">
+          <button type="button" onClick={onPrevious} disabled={page.offset === 0}>
+            Previous
+          </button>
+          <button type="button" onClick={onNext} disabled={!page.hasMore}>
+            Next
+          </button>
+        </div>
+      </div>
     );
   }
 

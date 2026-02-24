@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-db-up dev-db-down migrate-backend
+.PHONY: dev-up dev-down dev-db-up dev-db-down prod-up prod-down migrate-backend
 
 dev-up:
 	docker compose --profile app up -d
@@ -11,6 +11,12 @@ dev-db-down:
 
 dev-down:
 	docker compose --profile app down
+
+prod-up:
+	docker compose -f docker-compose.prod.yml up -d --build
+
+prod-down:
+	docker compose -f docker-compose.prod.yml down
 
 migrate-backend:
 	cd backend && npm run migrate

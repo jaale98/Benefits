@@ -8,7 +8,9 @@ Role-aware React shell for:
 - Invite-based self-signup from the UI
 - Premium configuration for all four coverage tiers
 - Security event visibility for full admin and company admin
+- Security event filters + pagination + CSV export
 - Employee enrollment receipt view
+- Company admin employee roster completeness/eligibility indicators
 
 ## Run
 

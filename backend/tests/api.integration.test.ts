@@ -45,6 +45,14 @@ describe('API integration (MVP core flows)', () => {
     const tenantAId = tenantAResponse.body.tenant.id as string;
     const tenantBId = tenantBResponse.body.tenant.id as string;
 
+    const pagedTenants = await request(app)
+      .get('/full-admin/tenants?limit=1&offset=0')
+      .set('Authorization', `Bearer ${fullAdminToken}`);
+    expect(pagedTenants.status).toBe(200);
+    expect((pagedTenants.body.tenants as unknown[]).length).toBe(1);
+    expect(pagedTenants.body.page.limit).toBe(1);
+    expect(pagedTenants.body.page.offset).toBe(0);
+
     const companyAdminInvite = await request(app)
       .post(`/full-admin/tenants/${tenantAId}/invite-codes/company-admin`)
       .set('Authorization', `Bearer ${fullAdminToken}`)
@@ -87,6 +95,13 @@ describe('API integration (MVP core flows)', () => {
     expect(employeeSignup.body.user.role).toBe('EMPLOYEE');
 
     const employeeToken = employeeSignup.body.accessToken as string;
+
+    const pagedUsers = await request(app)
+      .get(`/tenants/${tenantAId}/company-admin/users?role=EMPLOYEE&limit=1&offset=0`)
+      .set('Authorization', `Bearer ${companyAdminToken}`);
+    expect(pagedUsers.status).toBe(200);
+    expect((pagedUsers.body.users as unknown[]).length).toBe(1);
+    expect(pagedUsers.body.page.limit).toBe(1);
 
     const planYearStart = '2026-01-01';
     const planYearEnd = '2026-12-31';
@@ -156,6 +171,12 @@ describe('API integration (MVP core flows)', () => {
       });
 
     expect(employeeProfile.status).toBe(200);
+
+    const profilesResponse = await request(app)
+      .get(`/tenants/${tenantAId}/company-admin/employee-profiles`)
+      .set('Authorization', `Bearer ${companyAdminToken}`);
+    expect(profilesResponse.status).toBe(200);
+    expect((profilesResponse.body.profiles as unknown[]).length).toBe(1);
 
     const spouseTierWithoutSpouse = await request(app)
       .post(`/tenants/${tenantAId}/employee/enrollments/draft`)

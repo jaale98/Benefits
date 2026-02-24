@@ -196,6 +196,12 @@ export class InMemoryDb implements DbAdapter {
     return this.users.filter((user) => user.tenantId === tenantId && (!role || user.role === role));
   }
 
+  listEmployeeProfiles(tenantId: string): EmployeeProfileRecord[] {
+    return this.employeeProfiles
+      .filter((profile) => profile.tenantId === tenantId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
   toAuthUser(user: UserRecord): AuthUser {
     return {
       id: user.id,
@@ -791,12 +797,39 @@ export class InMemoryDb implements DbAdapter {
     return event;
   }
 
-  listSecurityEvents(input?: { tenantId?: string; limit?: number }): SecurityEventRecord[] {
-    const limit = input?.limit ?? 100;
+  listSecurityEvents(input?: {
+    tenantId?: string;
+    limit?: number;
+    offset?: number;
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    eventType?: string;
+    q?: string;
+  }): SecurityEventRecord[] {
+    const limit = Math.min(Math.max(input?.limit ?? 100, 1), 500);
+    const offset = Math.max(input?.offset ?? 0, 0);
+    const queryText = input?.q?.trim().toLowerCase() ?? '';
+    const eventType = input?.eventType?.trim().toLowerCase() ?? '';
+
     return this.securityEvents
       .filter((event) => !input?.tenantId || event.tenantId === input.tenantId)
+      .filter((event) => !input?.severity || event.severity === input.severity)
+      .filter((event) => !eventType || event.eventType.toLowerCase().includes(eventType))
+      .filter((event) => {
+        if (!queryText) {
+          return true;
+        }
+
+        const metadataText = event.metadata ? JSON.stringify(event.metadata).toLowerCase() : '';
+        return (
+          event.eventType.toLowerCase().includes(queryText) ||
+          event.severity.toLowerCase().includes(queryText) ||
+          (event.userId ?? '').toLowerCase().includes(queryText) ||
+          (event.tenantId ?? '').toLowerCase().includes(queryText) ||
+          metadataText.includes(queryText)
+        );
+      })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, limit);
+      .slice(offset, offset + limit);
   }
 
   private assertEmployeeInTenant(employeeUserId: string, tenantId: string): void {

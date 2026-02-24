@@ -89,8 +89,19 @@ export class ApiClient {
     return this.request('/auth/password-reset/confirm', 'POST', { token, newPassword }, false);
   }
 
-  async listTenants(): Promise<{ tenants?: components['schemas']['Tenant'][] }> {
-    return this.request('/full-admin/tenants', 'GET', undefined, true);
+  async listTenants(limit?: number, offset?: number): Promise<{
+    tenants?: components['schemas']['Tenant'][];
+    page?: components['schemas']['PageInfo'];
+  }> {
+    const queryParams = new URLSearchParams();
+    if (typeof limit === 'number') {
+      queryParams.set('limit', String(limit));
+    }
+    if (typeof offset === 'number') {
+      queryParams.set('offset', String(offset));
+    }
+    const query = queryParams.toString();
+    return this.request(`/full-admin/tenants${query ? `?${query}` : ''}`, 'GET', undefined, true);
   }
 
   async createTenant(payload: components['schemas']['CreateTenantRequest']): Promise<{ tenant?: components['schemas']['Tenant'] }> {
@@ -101,14 +112,67 @@ export class ApiClient {
     return this.request(`/full-admin/tenants/${tenantId}/invite-codes/company-admin`, 'POST', payload, true);
   }
 
-  async listFullAdminSecurityEvents(limit?: number): Promise<{ events?: components['schemas']['SecurityEvent'][] }> {
-    const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
-    return this.request(`/full-admin/security-events${query}`, 'GET', undefined, true);
+  async listFullAdminSecurityEvents(input?: {
+    limit?: number;
+    offset?: number;
+    tenantId?: string;
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    eventType?: string;
+    q?: string;
+  }): Promise<{
+    events?: components['schemas']['SecurityEvent'][];
+    page?: components['schemas']['PageInfo'];
+  }> {
+    const queryParams = new URLSearchParams();
+    if (typeof input?.limit === 'number') {
+      queryParams.set('limit', String(input.limit));
+    }
+    if (typeof input?.offset === 'number') {
+      queryParams.set('offset', String(input.offset));
+    }
+    if (input?.tenantId) {
+      queryParams.set('tenantId', input.tenantId);
+    }
+    if (input?.severity) {
+      queryParams.set('severity', input.severity);
+    }
+    if (input?.eventType) {
+      queryParams.set('eventType', input.eventType);
+    }
+    if (input?.q) {
+      queryParams.set('q', input.q);
+    }
+    const query = queryParams.toString();
+    return this.request(`/full-admin/security-events${query ? `?${query}` : ''}`, 'GET', undefined, true);
   }
 
-  async listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): Promise<{ users?: components['schemas']['User'][] }> {
-    const query = role ? `?role=${encodeURIComponent(role)}` : '';
-    return this.request(`/tenants/${tenantId}/company-admin/users${query}`, 'GET', undefined, true);
+  async listTenantUsers(
+    tenantId: string,
+    role?: 'COMPANY_ADMIN' | 'EMPLOYEE',
+    limit?: number,
+    offset?: number,
+  ): Promise<{
+    users?: components['schemas']['User'][];
+    page?: components['schemas']['PageInfo'];
+  }> {
+    const queryParams = new URLSearchParams();
+    if (role) {
+      queryParams.set('role', role);
+    }
+    if (typeof limit === 'number') {
+      queryParams.set('limit', String(limit));
+    }
+    if (typeof offset === 'number') {
+      queryParams.set('offset', String(offset));
+    }
+    const query = queryParams.toString();
+    return this.request(`/tenants/${tenantId}/company-admin/users${query ? `?${query}` : ''}`, 'GET', undefined, true);
+  }
+
+  async listEmployeeProfilesAsCompanyAdmin(
+    tenantId: string,
+  ): Promise<{ profiles?: components['schemas']['EmployeeProfile'][] }> {
+    return this.request(`/tenants/${tenantId}/company-admin/employee-profiles`, 'GET', undefined, true);
   }
 
   async createEmployeeInvite(tenantId: string, payload: components['schemas']['CreateInviteCodeRequest']): Promise<{ inviteCode?: components['schemas']['InviteCode'] }> {
@@ -117,10 +181,35 @@ export class ApiClient {
 
   async listCompanyAdminSecurityEvents(
     tenantId: string,
-    limit?: number,
-  ): Promise<{ events?: components['schemas']['SecurityEvent'][] }> {
-    const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
-    return this.request(`/tenants/${tenantId}/company-admin/security-events${query}`, 'GET', undefined, true);
+    input?: {
+      limit?: number;
+      offset?: number;
+      severity?: 'INFO' | 'WARN' | 'ERROR';
+      eventType?: string;
+      q?: string;
+    },
+  ): Promise<{
+    events?: components['schemas']['SecurityEvent'][];
+    page?: components['schemas']['PageInfo'];
+  }> {
+    const queryParams = new URLSearchParams();
+    if (typeof input?.limit === 'number') {
+      queryParams.set('limit', String(input.limit));
+    }
+    if (typeof input?.offset === 'number') {
+      queryParams.set('offset', String(input.offset));
+    }
+    if (input?.severity) {
+      queryParams.set('severity', input.severity);
+    }
+    if (input?.eventType) {
+      queryParams.set('eventType', input.eventType);
+    }
+    if (input?.q) {
+      queryParams.set('q', input.q);
+    }
+    const query = queryParams.toString();
+    return this.request(`/tenants/${tenantId}/company-admin/security-events${query ? `?${query}` : ''}`, 'GET', undefined, true);
   }
 
   async upsertEmployeeProfileAsCompanyAdmin(

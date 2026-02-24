@@ -9,6 +9,7 @@ This backend scaffold implements:
 - Login brute-force lockout guard
 - Structured JSON request logs with request IDs
 - Persisted security event stream (`security_events`)
+- Paginated security event APIs with severity/event-type/search filters
 - RBAC middleware
 - Tenant guard middleware
 - PostgreSQL-backed repository service (default runtime)
@@ -16,6 +17,7 @@ This backend scaffold implements:
 - Coverage-tier validation against selected dependents
 - Draft enrollments with `effectiveDate=null` until submit
 - Core tenant/admin/employee MVP endpoints
+- Company-admin employee profile roster endpoint
 - In-memory provider for integration tests
 
 ## Run

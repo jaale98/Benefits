@@ -169,6 +169,12 @@ form button:hover {
   font-size: 0.88rem;
 }
 
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .error-text {
   color: var(--error);
   font-weight: 600;
