@@ -2,8 +2,11 @@
 
 This backend scaffold implements:
 
-- Email/password auth with JWT
+- Email/password auth with JWT access tokens + rotated refresh tokens
 - Invite-code signup (`COMPANY_ADMIN`, `EMPLOYEE`)
+- Password reset request/confirm flow
+- Session invalidation (`/auth/logout`, `/auth/logout-all`)
+- Login brute-force lockout guard
 - RBAC middleware
 - Tenant guard middleware
 - PostgreSQL-backed repository service (default runtime)
@@ -28,6 +31,20 @@ npm run dev
 
 Default URL: `http://localhost:4000`
 
+## Local Postgres
+
+From repo root:
+
+```bash
+docker compose up -d postgres
+```
+
+Then run migrations:
+
+```bash
+npm run migrate
+```
+
 ## DB Provider
 
 - Default: `DB_PROVIDER=postgres` (requires `DATABASE_URL`).
@@ -44,6 +61,6 @@ Use these credentials with `POST /auth/login`.
 
 ## Notes
 
-- Database migration SQL is in `/db/migrations/001_init.sql`.
+- Database migration SQLs are in `/db/migrations`.
 - API contract is in `/docs/api/openapi.yaml`.
 - Integration tests: `npm test`.

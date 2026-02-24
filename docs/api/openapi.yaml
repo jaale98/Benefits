@@ -1,12 +1,10 @@
 openapi: 3.1.0
 info:
   title: Benefits Enrollment MVP API
-  version: 0.1.0
-  description: |
-    Multi-tenant benefits enrollment API (MVP) supporting medical, dental, and vision.
+  version: 0.2.0
+  description: Multi-tenant benefits enrollment API with role-based access controls.
 servers:
   - url: http://localhost:4000
-    description: Local development
 
 tags:
   - name: Health
@@ -21,31 +19,56 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
   schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
+
     Role:
       type: string
       enum: [FULL_ADMIN, COMPANY_ADMIN, EMPLOYEE]
+
     InviteTargetRole:
       type: string
       enum: [COMPANY_ADMIN, EMPLOYEE]
+
     BenefitClass:
       type: string
       enum: [FULL_TIME_ELIGIBLE, INELIGIBLE]
+
     EmploymentStatus:
       type: string
       enum: [ACTIVE, TERMED]
+
     PlanType:
       type: string
       enum: [MEDICAL, DENTAL, VISION]
+
     CoverageTier:
       type: string
       enum: [EMPLOYEE_ONLY, EMPLOYEE_SPOUSE, EMPLOYEE_CHILDREN, FAMILY]
+
     DependentRelationship:
       type: string
       enum: [SPOUSE, CHILD]
+
     EnrollmentStatus:
       type: string
       enum: [DRAFT, SUBMITTED]
+
     AuthUser:
       type: object
       required: [id, email, role, tenantId]
@@ -61,6 +84,69 @@ components:
         tenantId:
           type: [string, 'null']
           format: uuid
+        sessionId:
+          type: [string, 'null']
+          format: uuid
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/AuthUser'
+
+    SignupInviteRequest:
+      type: object
+      required: [inviteCode, email, password]
+      properties:
+        inviteCode:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+
     Tenant:
       type: object
       required: [id, companyId, name, createdAt, updatedAt]
@@ -78,9 +164,10 @@ components:
         updatedAt:
           type: string
           format: date-time
+
     InviteCode:
       type: object
-      required: [id, tenantId, code, targetRole, usesCount, isActive, createdAt]
+      required: [id, tenantId, code, targetRole, createdByUserId, usesCount, isActive, createdAt]
       properties:
         id:
           type: string
@@ -107,6 +194,31 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    User:
+      type: object
+      required: [id, tenantId, email, role, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: [string, 'null']
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     EmployeeProfileInput:
       type: object
       required:
@@ -122,6 +234,7 @@ components:
         employeeUserId:
           type: string
           format: uuid
+          description: Required only for FULL_ADMIN calls to employee-scoped routes.
         employeeId:
           type: string
         firstName:
@@ -140,11 +253,12 @@ components:
           $ref: '#/components/schemas/BenefitClass'
         employmentStatus:
           $ref: '#/components/schemas/EmploymentStatus'
+
     EmployeeProfile:
       allOf:
         - $ref: '#/components/schemas/EmployeeProfileInput'
         - type: object
-          required: [userId, tenantId]
+          required: [userId, tenantId, createdAt, updatedAt]
           properties:
             userId:
               type: string
@@ -152,9 +266,16 @@ components:
             tenantId:
               type: string
               format: uuid
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
     PlanYear:
       type: object
-      required: [id, tenantId, name, startDate, endDate, createdAt, updatedAt]
+      required: [id, tenantId, name, startDate, endDate, createdByUserId, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -179,9 +300,10 @@ components:
         updatedAt:
           type: string
           format: date-time
+
     Plan:
       type: object
-      required: [id, tenantId, planYearId, type, carrier, planName, isActive]
+      required: [id, tenantId, planYearId, type, carrier, planName, isActive, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -200,25 +322,48 @@ components:
           type: string
         isActive:
           type: boolean
-    PlanPremium:
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PlanPremiumInput:
       type: object
-      required: [id, planId, coverageTier, employeeMonthlyCost, employerMonthlyCost]
+      required: [coverageTier, employeeMonthlyCost, employerMonthlyCost]
       properties:
-        id:
-          type: string
-          format: uuid
-        planId:
-          type: string
-          format: uuid
         coverageTier:
           $ref: '#/components/schemas/CoverageTier'
         employeeMonthlyCost:
           type: number
+          minimum: 0
         employerMonthlyCost:
           type: number
+          minimum: 0
+
+    PlanPremium:
+      allOf:
+        - $ref: '#/components/schemas/PlanPremiumInput'
+        - type: object
+          required: [id, planId, createdAt, updatedAt]
+          properties:
+            id:
+              type: string
+              format: uuid
+            planId:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
     Dependent:
       type: object
-      required: [id, tenantId, employeeUserId, relationship, firstName, lastName, dob]
+      required: [id, tenantId, employeeUserId, relationship, firstName, lastName, dob, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -238,6 +383,13 @@ components:
         dob:
           type: string
           format: date
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     EnrollmentElection:
       type: object
       required: [planType, planId, coverageTier, employeeMonthlyCost, employerMonthlyCost]
@@ -253,6 +405,7 @@ components:
           type: number
         employerMonthlyCost:
           type: number
+
     Enrollment:
       type: object
       required:
@@ -261,8 +414,13 @@ components:
         - employeeUserId
         - planYearId
         - status
+        - effectiveDate
+        - submittedAt
+        - confirmationCode
         - elections
         - dependentIds
+        - createdAt
+        - updatedAt
       properties:
         id:
           type: string
@@ -295,6 +453,160 @@ components:
           items:
             type: string
             format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        companyId:
+          type: string
+
+    CreateInviteCodeRequest:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+        maxUses:
+          type: integer
+          minimum: 1
+
+    CreatePlanYearRequest:
+      type: object
+      required: [name, startDate, endDate]
+      properties:
+        name:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    CreatePlanRequest:
+      type: object
+      required: [planYearId, type, carrier, planName]
+      properties:
+        planYearId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/PlanType'
+        carrier:
+          type: string
+        planName:
+          type: string
+
+    SetPlanPremiumsRequest:
+      type: object
+      required: [tiers]
+      properties:
+        tiers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PlanPremiumInput'
+
+    CreateDependentRequest:
+      type: object
+      required: [relationship, firstName, lastName, dob]
+      properties:
+        employeeUserId:
+          type: string
+          format: uuid
+          description: Required only for FULL_ADMIN calls.
+        relationship:
+          $ref: '#/components/schemas/DependentRelationship'
+        firstName:
+          type: string
+        lastName:
+          type: string
+        dob:
+          type: string
+          format: date
+
+    EnrollmentElectionInput:
+      type: object
+      required: [planType, planId, coverageTier]
+      properties:
+        planType:
+          $ref: '#/components/schemas/PlanType'
+        planId:
+          type: string
+          format: uuid
+        coverageTier:
+          $ref: '#/components/schemas/CoverageTier'
+
+    CreateEnrollmentDraftRequest:
+      type: object
+      required: [planYearId, elections]
+      properties:
+        employeeUserId:
+          type: string
+          format: uuid
+        planYearId:
+          type: string
+          format: uuid
+        elections:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnrollmentElectionInput'
+        dependentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    SubmitEnrollmentRequest:
+      type: object
+      properties:
+        employeeUserId:
+          type: string
+          format: uuid
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        resetToken:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                error: Invalid or expired token
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid:
+              value:
+                error: Validation failed
+                details:
+                  - path: email
+                    message: Invalid email
 
 paths:
   /health:
@@ -304,6 +616,16 @@ paths:
       responses:
         '200':
           description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              examples:
+                ok:
+                  value: { status: ok }
 
   /auth/login:
     post:
@@ -314,45 +636,137 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [email, password]
-              properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
           description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                login:
+                  value:
+                    accessToken: jwt-token
+                    refreshToken: refresh-token
+                    user:
+                      id: 8f530abe-7332-4df1-9727-a8527dbffb1e
+                      email: platform-admin@example.com
+                      role: FULL_ADMIN
+                      tenantId: null
+                      sessionId: 1f530abe-7332-4df1-9727-a8527dbffb1e
         '401':
-          description: Invalid credentials
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /auth/signup-invite:
     post:
       tags: [Auth]
-      summary: Create user account with invite code
+      summary: Create account using invite code
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [inviteCode, email, password]
-              properties:
-                inviteCode:
-                  type: string
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
-                  minLength: 8
+              $ref: '#/components/schemas/SignupInviteRequest'
       responses:
         '201':
           description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
         '400':
-          description: Invalid or expired invite code
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token and issue new access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Logged out
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Revoke all sessions for current user
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out from all sessions
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/password-reset/request:
+    post:
+      tags: [Auth]
+      summary: Request password reset token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '200':
+          description: Password reset request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirm password reset using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '200':
+          description: Password reset complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
 
   /full-admin/tenants:
     get:
@@ -372,6 +786,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [Full Admin]
       summary: Create tenant
@@ -382,13 +798,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [name]
-              properties:
-                name:
-                  type: string
-                companyId:
-                  type: string
+              $ref: '#/components/schemas/CreateTenantRequest'
       responses:
         '201':
           description: Tenant created
@@ -403,12 +813,12 @@ paths:
   /full-admin/tenants/{tenantId}/invite-codes/company-admin:
     post:
       tags: [Full Admin]
-      summary: Create COMPANY_ADMIN invite code for tenant
+      summary: Create company admin invite code
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -418,17 +828,10 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                expiresAt:
-                  type: string
-                  format: date-time
-                maxUses:
-                  type: integer
-                  minimum: 1
+              $ref: '#/components/schemas/CreateInviteCodeRequest'
       responses:
         '201':
-          description: Invite created
+          description: Invite code created
           content:
             application/json:
               schema:
@@ -437,15 +840,47 @@ paths:
                   inviteCode:
                     $ref: '#/components/schemas/InviteCode'
 
-  /tenants/{tenantId}/company-admin/invite-codes/employee:
-    post:
+  /tenants/{tenantId}/company-admin/users:
+    get:
       tags: [Company Admin]
-      summary: Create EMPLOYEE invite code
+      summary: List tenant users
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [COMPANY_ADMIN, EMPLOYEE]
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+  /tenants/{tenantId}/company-admin/invite-codes/employee:
+    post:
+      tags: [Company Admin]
+      summary: Create employee invite code
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -455,17 +890,17 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                expiresAt:
-                  type: string
-                  format: date-time
-                maxUses:
-                  type: integer
-                  minimum: 1
+              $ref: '#/components/schemas/CreateInviteCodeRequest'
       responses:
         '201':
-          description: Invite created
+          description: Invite code created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inviteCode:
+                    $ref: '#/components/schemas/InviteCode'
 
   /tenants/{tenantId}/company-admin/employees/{employeeUserId}/profile:
     put:
@@ -474,14 +909,14 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
             format: uuid
-        - in: path
-          name: employeeUserId
+        - name: employeeUserId
+          in: path
           required: true
           schema:
             type: string
@@ -494,17 +929,48 @@ paths:
               $ref: '#/components/schemas/EmployeeProfileInput'
       responses:
         '200':
-          description: Profile saved
+          description: Employee profile saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    $ref: '#/components/schemas/EmployeeProfile'
 
   /tenants/{tenantId}/company-admin/plan-years:
+    get:
+      tags: [Company Admin]
+      summary: List plan years for tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Plan year list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planYears:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanYear'
     post:
       tags: [Company Admin]
       summary: Create plan year
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -514,30 +980,57 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [name, startDate, endDate]
-              properties:
-                name:
-                  type: string
-                startDate:
-                  type: string
-                  format: date
-                endDate:
-                  type: string
-                  format: date
+              $ref: '#/components/schemas/CreatePlanYearRequest'
       responses:
         '201':
           description: Plan year created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planYear:
+                    $ref: '#/components/schemas/PlanYear'
 
   /tenants/{tenantId}/company-admin/plans:
+    get:
+      tags: [Company Admin]
+      summary: List plans for tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: planYearId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Plan list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
     post:
       tags: [Company Admin]
       summary: Create plan
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -547,37 +1040,33 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [planYearId, type, carrier, planName]
-              properties:
-                planYearId:
-                  type: string
-                  format: uuid
-                type:
-                  $ref: '#/components/schemas/PlanType'
-                carrier:
-                  type: string
-                planName:
-                  type: string
+              $ref: '#/components/schemas/CreatePlanRequest'
       responses:
         '201':
           description: Plan created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/Plan'
 
   /tenants/{tenantId}/company-admin/plans/{planId}/premiums:
     put:
       tags: [Company Admin]
-      summary: Replace plan premiums by coverage tier
+      summary: Replace plan premium tiers
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
             format: uuid
-        - in: path
-          name: planId
+        - name: planId
+          in: path
           required: true
           schema:
             type: string
@@ -587,37 +1076,87 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [tiers]
-              properties:
-                tiers:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: object
-                    required: [coverageTier, employeeMonthlyCost, employerMonthlyCost]
-                    properties:
-                      coverageTier:
-                        $ref: '#/components/schemas/CoverageTier'
-                      employeeMonthlyCost:
-                        type: number
-                        minimum: 0
-                      employerMonthlyCost:
-                        type: number
-                        minimum: 0
+              $ref: '#/components/schemas/SetPlanPremiumsRequest'
       responses:
         '200':
           description: Premiums updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  premiums:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanPremium'
+
+  /tenants/{tenantId}/employee/plan-years:
+    get:
+      tags: [Employee]
+      summary: List tenant plan years
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Plan years listed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planYears:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanYear'
+
+  /tenants/{tenantId}/employee/plans:
+    get:
+      tags: [Employee]
+      summary: List tenant plans
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: planYearId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Plans listed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
 
   /tenants/{tenantId}/employee/profile:
     put:
       tags: [Employee]
-      summary: Upsert current employee profile
+      summary: Upsert employee profile
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -630,17 +1169,54 @@ paths:
               $ref: '#/components/schemas/EmployeeProfileInput'
       responses:
         '200':
-          description: Profile saved
+          description: Employee profile saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    $ref: '#/components/schemas/EmployeeProfile'
 
   /tenants/{tenantId}/employee/dependents:
-    post:
+    get:
       tags: [Employee]
-      summary: Add dependent for current employee
+      summary: List employee dependents
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: employeeUserId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Dependents listed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dependents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dependent'
+    post:
+      tags: [Employee]
+      summary: Add dependent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -650,25 +1226,49 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [relationship, firstName, lastName, dob]
-              properties:
-                employeeUserId:
-                  type: string
-                  format: uuid
-                  description: Required only when actor is FULL_ADMIN.
-                relationship:
-                  $ref: '#/components/schemas/DependentRelationship'
-                firstName:
-                  type: string
-                lastName:
-                  type: string
-                dob:
-                  type: string
-                  format: date
+              $ref: '#/components/schemas/CreateDependentRequest'
       responses:
         '201':
-          description: Dependent added
+          description: Dependent created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dependent:
+                    $ref: '#/components/schemas/Dependent'
+
+  /tenants/{tenantId}/employee/enrollments:
+    get:
+      tags: [Employee]
+      summary: List employee enrollments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: employeeUserId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Enrollments listed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrollments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Enrollment'
 
   /tenants/{tenantId}/employee/enrollments/draft:
     post:
@@ -677,8 +1277,8 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
@@ -688,53 +1288,33 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [planYearId, elections]
-              properties:
-                employeeUserId:
-                  type: string
-                  format: uuid
-                  description: Required only when actor is FULL_ADMIN.
-                planYearId:
-                  type: string
-                  format: uuid
-                elections:
-                  type: array
-                  items:
-                    type: object
-                    required: [planType, planId, coverageTier]
-                    properties:
-                      planType:
-                        $ref: '#/components/schemas/PlanType'
-                      planId:
-                        type: string
-                        format: uuid
-                      coverageTier:
-                        $ref: '#/components/schemas/CoverageTier'
-                dependentIds:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
+              $ref: '#/components/schemas/CreateEnrollmentDraftRequest'
       responses:
         '201':
           description: Draft created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrollment:
+                    $ref: '#/components/schemas/Enrollment'
 
   /tenants/{tenantId}/employee/enrollments/{enrollmentId}/submit:
     post:
       tags: [Employee]
-      summary: Submit enrollment draft
+      summary: Submit enrollment
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: tenantId
+        - name: tenantId
+          in: path
           required: true
           schema:
             type: string
             format: uuid
-        - in: path
-          name: enrollmentId
+        - name: enrollmentId
+          in: path
           required: true
           schema:
             type: string
@@ -744,12 +1324,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                employeeUserId:
-                  type: string
-                  format: uuid
-                  description: Required only when actor is FULL_ADMIN.
+              $ref: '#/components/schemas/SubmitEnrollmentRequest'
       responses:
         '200':
           description: Enrollment submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrollment:
+                    $ref: '#/components/schemas/Enrollment'

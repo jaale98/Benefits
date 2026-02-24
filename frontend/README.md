@@ -16,3 +16,17 @@ npm run dev
 Default URL: `http://localhost:5173`
 
 Set API base URL via `VITE_API_BASE_URL` or use the in-app API URL field.
+
+## API Types
+
+Generate frontend API types from OpenAPI:
+
+```bash
+npm run generate:api
+```
+
+## E2E Tests
+
+```bash
+npm run e2e
+```

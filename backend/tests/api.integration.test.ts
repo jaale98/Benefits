@@ -17,6 +17,7 @@ describe('API integration (MVP core flows)', () => {
     expect(response.status).toBe(200);
     expect(response.body.user.role).toBe('FULL_ADMIN');
     expect(typeof response.body.accessToken).toBe('string');
+    expect(typeof response.body.refreshToken).toBe('string');
   });
 
   it('enforces tenant isolation and enrollment business rules end-to-end', async () => {
@@ -216,5 +217,103 @@ describe('API integration (MVP core flows)', () => {
     expect(validSubmit.body.enrollment.status).toBe('SUBMITTED');
     expect(validSubmit.body.enrollment.confirmationCode).toContain('ENR-');
     expect(validSubmit.body.enrollment.effectiveDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('supports refresh/logout/password-reset hardening flows', async () => {
+    const suffix = Date.now().toString();
+    const email = `secure-user-${suffix}@example.com`;
+    const password = 'StrongPass123!';
+    const newPassword = 'EvenStrongerPass456!';
+
+    const fullAdminLogin = await request(app).post('/auth/login').send({
+      email: 'platform-admin@example.com',
+      password: 'ChangeMe123!',
+    });
+
+    const fullAdminToken = fullAdminLogin.body.accessToken as string;
+
+    const tenantResponse = await request(app)
+      .post('/full-admin/tenants')
+      .set('Authorization', `Bearer ${fullAdminToken}`)
+      .send({ name: `Secure Tenant ${suffix}`, companyId: `secure-${suffix}` });
+
+    expect(tenantResponse.status).toBe(201);
+    const tenantId = tenantResponse.body.tenant.id as string;
+
+    const companyAdminInvite = await request(app)
+      .post(`/full-admin/tenants/${tenantId}/invite-codes/company-admin`)
+      .set('Authorization', `Bearer ${fullAdminToken}`)
+      .send({ maxUses: 1 });
+
+    const companyAdminSignup = await request(app).post('/auth/signup-invite').send({
+      inviteCode: companyAdminInvite.body.inviteCode.code,
+      email: `admin-${suffix}@example.com`,
+      password,
+    });
+    const companyAdminToken = companyAdminSignup.body.accessToken as string;
+
+    const employeeInvite = await request(app)
+      .post(`/tenants/${tenantId}/company-admin/invite-codes/employee`)
+      .set('Authorization', `Bearer ${companyAdminToken}`)
+      .send({ maxUses: 1 });
+
+    const employeeSignup = await request(app).post('/auth/signup-invite').send({
+      inviteCode: employeeInvite.body.inviteCode.code,
+      email,
+      password,
+    });
+
+    expect(employeeSignup.status).toBe(201);
+
+    const loginResponse = await request(app).post('/auth/login').send({ email, password });
+    expect(loginResponse.status).toBe(200);
+
+    const initialAccessToken = loginResponse.body.accessToken as string;
+    const initialRefreshToken = loginResponse.body.refreshToken as string;
+
+    const refreshResponse = await request(app).post('/auth/refresh').send({
+      refreshToken: initialRefreshToken,
+    });
+
+    expect(refreshResponse.status).toBe(200);
+    expect(typeof refreshResponse.body.accessToken).toBe('string');
+    expect(typeof refreshResponse.body.refreshToken).toBe('string');
+
+    const logoutAll = await request(app)
+      .post('/auth/logout-all')
+      .set('Authorization', `Bearer ${refreshResponse.body.accessToken as string}`)
+      .send({});
+    expect(logoutAll.status).toBe(204);
+
+    const oldRefreshReuse = await request(app).post('/auth/refresh').send({
+      refreshToken: initialRefreshToken,
+    });
+    expect(oldRefreshReuse.status).toBe(401);
+
+    const rejectedAfterLogoutAll = await request(app)
+      .get(`/tenants/${tenantId}/employee/plan-years`)
+      .set('Authorization', `Bearer ${refreshResponse.body.accessToken as string}`);
+    expect(rejectedAfterLogoutAll.status).toBe(401);
+
+    const passwordResetRequest = await request(app).post('/auth/password-reset/request').send({ email });
+    expect(passwordResetRequest.status).toBe(200);
+    expect(typeof passwordResetRequest.body.resetToken).toBe('string');
+
+    const passwordResetConfirm = await request(app).post('/auth/password-reset/confirm').send({
+      token: passwordResetRequest.body.resetToken,
+      newPassword,
+    });
+    expect(passwordResetConfirm.status).toBe(200);
+
+    const oldPasswordLogin = await request(app).post('/auth/login').send({ email, password });
+    expect(oldPasswordLogin.status).toBe(401);
+
+    const newPasswordLogin = await request(app).post('/auth/login').send({ email, password: newPassword });
+    expect(newPasswordLogin.status).toBe(200);
+
+    const staleTokenRejected = await request(app)
+      .get(`/tenants/${tenantId}/employee/plan-years`)
+      .set('Authorization', `Bearer ${initialAccessToken}`);
+    expect(staleTokenRejected.status).toBe(401);
   });
 });

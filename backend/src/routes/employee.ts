@@ -46,9 +46,55 @@ const submitEnrollmentSchema = z.object({
   employeeUserId: z.string().uuid().optional(),
 });
 
+const listPlansQuerySchema = z.object({
+  planYearId: z.string().uuid().optional(),
+  employeeUserId: z.string().uuid().optional(),
+});
+
+const listDependentsQuerySchema = z.object({
+  employeeUserId: z.string().uuid().optional(),
+});
+
 const employeeRouter = Router({ mergeParams: true });
 
 employeeRouter.use(authenticate, requireRoles('EMPLOYEE', 'FULL_ADMIN'), requireTenantAccess('tenantId'));
+
+employeeRouter.get(
+  '/plan-years',
+  asyncHandler(async (req, res) => {
+    const planYears = await db.listPlanYears(req.params.tenantId);
+    res.json({ planYears });
+  }),
+);
+
+employeeRouter.get(
+  '/plans',
+  asyncHandler(async (req, res) => {
+    const query = listPlansQuerySchema.parse(req.query);
+    const plans = await db.listPlans(req.params.tenantId, query.planYearId);
+    res.json({ plans });
+  }),
+);
+
+employeeRouter.get(
+  '/dependents',
+  asyncHandler(async (req, res) => {
+    const query = listDependentsQuerySchema.parse(req.query);
+    const employeeUserId = resolveEmployeeUserId(req.user!, query.employeeUserId);
+    const dependents = await db.listEmployeeDependents(req.params.tenantId, employeeUserId);
+    res.json({ dependents });
+  }),
+);
+
+employeeRouter.get(
+  '/enrollments',
+  asyncHandler(async (req, res) => {
+    const query = listDependentsQuerySchema.parse(req.query);
+    const employeeUserId = resolveEmployeeUserId(req.user!, query.employeeUserId);
+    const enrollments = await db.listEmployeeEnrollments(req.params.tenantId, employeeUserId);
+    res.json({ enrollments });
+  }),
+);
 
 employeeRouter.put(
   '/profile',

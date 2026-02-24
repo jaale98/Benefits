@@ -7,4 +7,5 @@ export interface AuthUser {
   email: string;
   role: Role;
   tenantId: string | null;
+  sessionId?: string;
 }

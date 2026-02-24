@@ -22,6 +22,14 @@ const createEmployeeInviteSchema = z.object({
   maxUses: z.number().int().positive().optional(),
 });
 
+const listUsersQuerySchema = z.object({
+  role: z.enum(['COMPANY_ADMIN', 'EMPLOYEE']).optional(),
+});
+
+const listPlansQuerySchema = z.object({
+  planYearId: z.string().uuid().optional(),
+});
+
 const createPlanYearSchema = z.object({
   name: z.string().min(1).max(64),
   startDate: z.string().date(),
@@ -51,6 +59,15 @@ const companyAdminRouter = Router({ mergeParams: true });
 
 companyAdminRouter.use(authenticate, requireRoles('COMPANY_ADMIN', 'FULL_ADMIN'), requireTenantAccess('tenantId'));
 
+companyAdminRouter.get(
+  '/users',
+  asyncHandler(async (req, res) => {
+    const query = listUsersQuerySchema.parse(req.query);
+    const users = await db.listTenantUsers(req.params.tenantId, query.role);
+    res.json({ users });
+  }),
+);
+
 companyAdminRouter.post(
   '/invite-codes/employee',
   asyncHandler(async (req, res) => {
@@ -69,6 +86,14 @@ companyAdminRouter.post(
   }),
 );
 
+companyAdminRouter.get(
+  '/plan-years',
+  asyncHandler(async (req, res) => {
+    const planYears = await db.listPlanYears(req.params.tenantId);
+    res.json({ planYears });
+  }),
+);
+
 companyAdminRouter.put(
   '/employees/:employeeUserId/profile',
   asyncHandler(async (req, res) => {
@@ -78,6 +103,15 @@ companyAdminRouter.put(
 
     const profile = await db.upsertEmployeeProfile(tenantId, employeeUserId, payload);
     res.json({ profile });
+  }),
+);
+
+companyAdminRouter.get(
+  '/plans',
+  asyncHandler(async (req, res) => {
+    const query = listPlansQuerySchema.parse(req.query);
+    const plans = await db.listPlans(req.params.tenantId, query.planYearId);
+    res.json({ plans });
   }),
 );
 

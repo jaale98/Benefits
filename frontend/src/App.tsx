@@ -1,89 +1,49 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ApiClient, ApiError, type ApiTokens } from './api/client';
+import type { components } from './api/generated';
 
 type Role = 'FULL_ADMIN' | 'COMPANY_ADMIN' | 'EMPLOYEE';
+type SessionUser = components['schemas']['AuthUser'];
+type Tenant = components['schemas']['Tenant'];
+type User = components['schemas']['User'];
+type PlanYear = components['schemas']['PlanYear'];
+type Plan = components['schemas']['Plan'];
+type Dependent = components['schemas']['Dependent'];
+type Enrollment = components['schemas']['Enrollment'];
 
-interface SessionUser {
-  id: string;
-  email: string;
-  role: Role;
-  tenantId: string | null;
-}
-
-interface ApiResult {
-  status: number;
-  body: unknown;
-}
-
-type PanelKey =
-  | 'full-admin-tenant'
-  | 'full-admin-company-invite'
-  | 'company-employee-invite'
-  | 'company-employee-profile'
-  | 'company-plan-year'
-  | 'company-plan'
-  | 'company-plan-premiums'
-  | 'employee-profile'
-  | 'employee-dependent'
-  | 'employee-draft'
-  | 'employee-submit';
-
-const ROLE_PANELS: Record<Role, PanelKey[]> = {
-  FULL_ADMIN: ['full-admin-tenant', 'full-admin-company-invite'],
-  COMPANY_ADMIN: ['company-employee-invite', 'company-employee-profile', 'company-plan-year', 'company-plan', 'company-plan-premiums'],
-  EMPLOYEE: ['employee-profile', 'employee-dependent', 'employee-draft', 'employee-submit'],
-};
-
-const PANEL_LABELS: Record<PanelKey, string> = {
-  'full-admin-tenant': 'Create Tenant',
-  'full-admin-company-invite': 'Company Admin Invite',
-  'company-employee-invite': 'Employee Invite',
-  'company-employee-profile': 'Set Employee Profile',
-  'company-plan-year': 'Create Plan Year',
-  'company-plan': 'Create Plan',
-  'company-plan-premiums': 'Set Plan Premiums',
-  'employee-profile': 'My Profile',
-  'employee-dependent': 'Add Dependent',
-  'employee-draft': 'Create Enrollment Draft',
-  'employee-submit': 'Submit Enrollment',
-};
+const DEFAULT_LOGIN_EMAIL = 'platform-admin@example.com';
+const DEFAULT_LOGIN_PASSWORD = 'ChangeMe123!';
 
 export function App() {
   const [apiBaseUrl, setApiBaseUrl] = useState(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000');
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string>('');
 
-  const [loginEmail, setLoginEmail] = useState('platform-admin@example.com');
-  const [loginPassword, setLoginPassword] = useState('ChangeMe123!');
+  const [tokens, setTokens] = useState<ApiTokens | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const [loginEmail, setLoginEmail] = useState(DEFAULT_LOGIN_EMAIL);
+  const [loginPassword, setLoginPassword] = useState(DEFAULT_LOGIN_PASSWORD);
+
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenantUsers, setTenantUsers] = useState<User[]>([]);
+  const [planYears, setPlanYears] = useState<PlanYear[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
 
   const [tenantName, setTenantName] = useState('');
   const [tenantCompanyId, setTenantCompanyId] = useState('');
-  const [companyInviteTenantId, setCompanyInviteTenantId] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState('');
+
   const [employeeInviteMaxUses, setEmployeeInviteMaxUses] = useState('1');
-  const [employeeProfileUserId, setEmployeeProfileUserId] = useState('');
-
-  const [planYearName, setPlanYearName] = useState('2026 Plan Year');
-  const [planYearStart, setPlanYearStart] = useState('2026-01-01');
-  const [planYearEnd, setPlanYearEnd] = useState('2026-12-31');
-
-  const [planYearId, setPlanYearId] = useState('');
-  const [planType, setPlanType] = useState('MEDICAL');
-  const [planCarrier, setPlanCarrier] = useState('Aetna');
-  const [planName, setPlanName] = useState('Aetna Gold PPO');
-
-  const [premiumsPlanId, setPremiumsPlanId] = useState('');
-  const [premiumsJson, setPremiumsJson] = useState(
-    JSON.stringify(
-      [
-        { coverageTier: 'EMPLOYEE_ONLY', employeeMonthlyCost: 120, employerMonthlyCost: 480 },
-        { coverageTier: 'FAMILY', employeeMonthlyCost: 420, employerMonthlyCost: 980 },
-      ],
-      null,
-      2,
-    ),
-  );
+  const [selectedEmployeeUserId, setSelectedEmployeeUserId] = useState('');
 
   const [employeeId, setEmployeeId] = useState('EMP-001');
   const [firstName, setFirstName] = useState('Taylor');
@@ -91,332 +51,555 @@ export function App() {
   const [dob, setDob] = useState('1990-02-01');
   const [hireDate, setHireDate] = useState('2024-01-15');
   const [salaryAmount, setSalaryAmount] = useState('75000');
-  const [benefitClass, setBenefitClass] = useState('FULL_TIME_ELIGIBLE');
-  const [employmentStatus, setEmploymentStatus] = useState('ACTIVE');
+  const [benefitClass, setBenefitClass] = useState<'FULL_TIME_ELIGIBLE' | 'INELIGIBLE'>('FULL_TIME_ELIGIBLE');
+  const [employmentStatus, setEmploymentStatus] = useState<'ACTIVE' | 'TERMED'>('ACTIVE');
 
-  const [dependentRelationship, setDependentRelationship] = useState('CHILD');
+  const [planYearName, setPlanYearName] = useState('2026 Plan Year');
+  const [planYearStart, setPlanYearStart] = useState('2026-01-01');
+  const [planYearEnd, setPlanYearEnd] = useState('2026-12-31');
+  const [selectedPlanYearId, setSelectedPlanYearId] = useState('');
+
+  const [planType, setPlanType] = useState<'MEDICAL' | 'DENTAL' | 'VISION'>('MEDICAL');
+  const [planCarrier, setPlanCarrier] = useState('Aetna');
+  const [planName, setPlanName] = useState('Aetna Gold PPO');
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+
+  const [employeeOnlyEmployeeCost, setEmployeeOnlyEmployeeCost] = useState('120');
+  const [employeeOnlyEmployerCost, setEmployeeOnlyEmployerCost] = useState('480');
+  const [familyEmployeeCost, setFamilyEmployeeCost] = useState('420');
+  const [familyEmployerCost, setFamilyEmployerCost] = useState('980');
+
+  const [dependentRelationship, setDependentRelationship] = useState<'SPOUSE' | 'CHILD'>('CHILD');
   const [dependentFirstName, setDependentFirstName] = useState('Jordan');
   const [dependentLastName, setDependentLastName] = useState('Dependent');
   const [dependentDob, setDependentDob] = useState('2015-05-01');
 
   const [draftPlanYearId, setDraftPlanYearId] = useState('');
   const [draftPlanId, setDraftPlanId] = useState('');
-  const [draftPlanType, setDraftPlanType] = useState('MEDICAL');
-  const [draftCoverageTier, setDraftCoverageTier] = useState('EMPLOYEE_ONLY');
-  const [draftDependentIds, setDraftDependentIds] = useState('');
-  const [submitEnrollmentId, setSubmitEnrollmentId] = useState('');
+  const [draftCoverageTier, setDraftCoverageTier] = useState<'EMPLOYEE_ONLY' | 'EMPLOYEE_SPOUSE' | 'EMPLOYEE_CHILDREN' | 'FAMILY'>('EMPLOYEE_ONLY');
+  const [selectedDependentIds, setSelectedDependentIds] = useState<string[]>([]);
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState('');
 
-  const [panel, setPanel] = useState<PanelKey>('full-admin-tenant');
+  const tenantId = user?.tenantId ?? null;
 
-  const tenantId = useMemo(() => user?.tenantId ?? null, [user]);
+  const api = useMemo(
+    () =>
+      new ApiClient({
+        baseUrl: apiBaseUrl,
+        getTokens: () => tokens,
+        setTokens,
+      }),
+    [apiBaseUrl, tokens],
+  );
 
-  const visiblePanels = user ? ROLE_PANELS[user.role] : [];
-
-  async function callApi(path: string, method: string, body?: unknown): Promise<ApiResult> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+  useEffect(() => {
+    if (!user) {
+      return;
     }
 
-    const response = await fetch(`${apiBaseUrl}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    void refreshReferenceData();
+  }, [user]);
 
-    const json = (await response.json().catch(() => ({}))) as unknown;
-    return { status: response.status, body: json };
-  }
+  useEffect(() => {
+    if (!selectedPlanYearId && planYears.length > 0) {
+      setSelectedPlanYearId(planYears[0]?.id ?? '');
+    }
+  }, [planYears, selectedPlanYearId]);
 
-  async function runAction(label: string, action: () => Promise<ApiResult>) {
+  useEffect(() => {
+    if (!selectedPlanId && plans.length > 0) {
+      setSelectedPlanId(plans[0]?.id ?? '');
+    }
+  }, [plans, selectedPlanId]);
+
+  useEffect(() => {
+    if (!draftPlanYearId && planYears.length > 0) {
+      setDraftPlanYearId(planYears[0]?.id ?? '');
+    }
+  }, [planYears, draftPlanYearId]);
+
+  useEffect(() => {
+    const filteredPlans = plans.filter((plan) => plan.planYearId === draftPlanYearId);
+    if (!draftPlanId && filteredPlans.length > 0) {
+      setDraftPlanId(filteredPlans[0]?.id ?? '');
+    }
+  }, [draftPlanYearId, plans, draftPlanId]);
+
+  async function runAction<T>(label: string, action: () => Promise<T>, onSuccess?: (result: T) => void): Promise<void> {
     setLoading(true);
-    setError(null);
+    setError('');
 
     try {
-      const response = await action();
-      setResult(`${label}\nStatus: ${response.status}\n${JSON.stringify(response.body, null, 2)}`);
-
-      if (response.status >= 400) {
-        setError(`${label} failed with ${response.status}`);
+      const result = await action();
+      onSuccess?.(result);
+      setMessage(`${label} succeeded.`);
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        setError(`${label} failed (${caught.status}): ${stringifyError(caught.body)}`);
+      } else if (caught instanceof Error) {
+        setError(`${label} failed: ${caught.message}`);
+      } else {
+        setError(`${label} failed.`);
       }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unexpected error');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function refreshReferenceData(): Promise<void> {
+    if (!user) {
+      return;
+    }
+
+    if (user.role === 'FULL_ADMIN') {
+      const tenantResponse = await api.listTenants();
+      const nextTenants = tenantResponse.tenants ?? [];
+      setTenants(nextTenants);
+      if (!selectedTenantId && nextTenants.length > 0) {
+        setSelectedTenantId(nextTenants[0].id ?? '');
+      }
+      return;
+    }
+
+    if (!tenantId) {
+      return;
+    }
+
+    if (user.role === 'COMPANY_ADMIN') {
+      const [usersResponse, planYearsResponse, plansResponse] = await Promise.all([
+        api.listTenantUsers(tenantId, 'EMPLOYEE'),
+        api.listPlanYearsAsCompanyAdmin(tenantId),
+        api.listPlansAsCompanyAdmin(tenantId),
+      ]);
+
+      setTenantUsers(usersResponse.users ?? []);
+      setPlanYears(planYearsResponse.planYears ?? []);
+      setPlans(plansResponse.plans ?? []);
+
+      if (!selectedEmployeeUserId && (usersResponse.users ?? []).length > 0) {
+        setSelectedEmployeeUserId(usersResponse.users?.[0]?.id ?? '');
+      }
+      return;
+    }
+
+    const [planYearsResponse, plansResponse, dependentsResponse, enrollmentsResponse] = await Promise.all([
+      api.listPlanYearsAsEmployee(tenantId),
+      api.listPlansAsEmployee(tenantId),
+      api.listDependents(tenantId),
+      api.listEnrollments(tenantId),
+    ]);
+
+    setPlanYears(planYearsResponse.planYears ?? []);
+    setPlans(plansResponse.plans ?? []);
+    setDependents(dependentsResponse.dependents ?? []);
+    setEnrollments(enrollmentsResponse.enrollments ?? []);
+
+    if (!selectedEnrollmentId && (enrollmentsResponse.enrollments ?? []).length > 0) {
+      setSelectedEnrollmentId(enrollmentsResponse.enrollments?.[0]?.id ?? '');
+    }
+  }
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    await runAction('Login', async () => {
-      const response = await callApi('/auth/login', 'POST', {
-        email: loginEmail,
-        password: loginPassword,
-      });
-
-      if (response.status === 200 && isLoginBody(response.body)) {
-        setToken(response.body.accessToken);
-        setUser(response.body.user);
-        setPanel(ROLE_PANELS[response.body.user.role][0]);
-      }
-
-      return response;
+    await runAction('Login', () => api.login({ email: loginEmail, password: loginPassword }), (response) => {
+      setUser(response.user ?? null);
+      setResetEmail(loginEmail);
+      setResetToken('');
+      setResetNewPassword('');
     });
   }
 
-  function logout() {
-    setToken(null);
-    setUser(null);
-    setPanel('full-admin-tenant');
-    setResult('');
-    setError(null);
+  async function handleLogout(): Promise<void> {
+    await runAction('Logout', () => api.logout(), () => {
+      setUser(null);
+      setTokens(null);
+      setTenants([]);
+      setTenantUsers([]);
+      setPlanYears([]);
+      setPlans([]);
+      setDependents([]);
+      setEnrollments([]);
+    });
   }
 
-  function renderPanel() {
+  async function handleCreateTenant(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    await runAction(
+      'Create tenant',
+      () =>
+        api.createTenant({
+          name: tenantName,
+          companyId: tenantCompanyId || undefined,
+        }),
+      async () => {
+        setTenantName('');
+        setTenantCompanyId('');
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handleCreateCompanyAdminInvite(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!selectedTenantId) {
+      setError('Select a tenant first.');
+      return;
+    }
+
+    await runAction('Create company admin invite', () => api.createCompanyAdminInvite(selectedTenantId, { maxUses: 1 }));
+  }
+
+  async function handleCreateEmployeeInvite(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId) {
+      return;
+    }
+
+    await runAction('Create employee invite', () =>
+      api.createEmployeeInvite(tenantId, {
+        maxUses: Number(employeeInviteMaxUses),
+      }),
+    );
+  }
+
+  async function handleSaveEmployeeProfileAsCompanyAdmin(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId || !selectedEmployeeUserId) {
+      setError('Select an employee user first.');
+      return;
+    }
+
+    await runAction('Save employee profile', () =>
+      api.upsertEmployeeProfileAsCompanyAdmin(tenantId, selectedEmployeeUserId, buildEmployeeProfilePayload()),
+    );
+  }
+
+  async function handleCreatePlanYear(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId) {
+      return;
+    }
+
+    await runAction(
+      'Create plan year',
+      () =>
+        api.createPlanYear(tenantId, {
+          name: planYearName,
+          startDate: planYearStart,
+          endDate: planYearEnd,
+        }),
+      async () => {
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handleCreatePlan(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId || !selectedPlanYearId) {
+      setError('Select a plan year first.');
+      return;
+    }
+
+    await runAction(
+      'Create plan',
+      () =>
+        api.createPlan(tenantId, {
+          planYearId: selectedPlanYearId,
+          type: planType,
+          carrier: planCarrier,
+          planName,
+        }),
+      async () => {
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handleSetPremiums(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId || !selectedPlanId) {
+      setError('Select a plan first.');
+      return;
+    }
+
+    await runAction('Set plan premiums', () =>
+      api.setPlanPremiums(tenantId, selectedPlanId, {
+        tiers: [
+          {
+            coverageTier: 'EMPLOYEE_ONLY',
+            employeeMonthlyCost: Number(employeeOnlyEmployeeCost),
+            employerMonthlyCost: Number(employeeOnlyEmployerCost),
+          },
+          {
+            coverageTier: 'FAMILY',
+            employeeMonthlyCost: Number(familyEmployeeCost),
+            employerMonthlyCost: Number(familyEmployerCost),
+          },
+        ],
+      }),
+    );
+  }
+
+  async function handleSaveEmployeeProfile(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId) {
+      return;
+    }
+
+    await runAction('Save profile', () => api.upsertEmployeeProfile(tenantId, buildEmployeeProfilePayload()));
+  }
+
+  async function handleAddDependent(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId) {
+      return;
+    }
+
+    await runAction(
+      'Add dependent',
+      () =>
+        api.addDependent(tenantId, {
+          relationship: dependentRelationship,
+          firstName: dependentFirstName,
+          lastName: dependentLastName,
+          dob: dependentDob,
+        }),
+      async () => {
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handleCreateDraft(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId || !draftPlanYearId || !draftPlanId) {
+      setError('Select plan year and plan first.');
+      return;
+    }
+
+    const selectedPlan = plans.find((plan) => plan.id === draftPlanId);
+    if (!selectedPlan?.type) {
+      setError('Selected plan is invalid.');
+      return;
+    }
+
+    await runAction(
+      'Create enrollment draft',
+      () =>
+        api.createEnrollmentDraft(tenantId, {
+          planYearId: draftPlanYearId,
+          elections: [
+            {
+              planType: selectedPlan.type,
+              planId: draftPlanId,
+              coverageTier: draftCoverageTier,
+            },
+          ],
+          dependentIds: selectedDependentIds,
+        }),
+      async () => {
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handleSubmitEnrollment(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!tenantId || !selectedEnrollmentId) {
+      setError('Select an enrollment to submit.');
+      return;
+    }
+
+    await runAction(
+      'Submit enrollment',
+      () => api.submitEnrollment(tenantId, selectedEnrollmentId, {}),
+      async () => {
+        await refreshReferenceData();
+      },
+    );
+  }
+
+  async function handlePasswordResetRequest(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    await runAction('Request password reset', () => api.requestPasswordReset(resetEmail), (response) => {
+      if (response.resetToken) {
+        setResetToken(response.resetToken);
+      }
+    });
+  }
+
+  async function handlePasswordResetConfirm(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    await runAction('Confirm password reset', () => api.confirmPasswordReset(resetToken, resetNewPassword));
+  }
+
+  function buildEmployeeProfilePayload(): components['schemas']['EmployeeProfileInput'] {
+    return {
+      employeeId,
+      firstName,
+      lastName,
+      dob,
+      hireDate,
+      salaryAmount: Number(salaryAmount),
+      benefitClass,
+      employmentStatus,
+    };
+  }
+
+  function renderRolePanels() {
     if (!user) {
       return null;
     }
 
-    const scopedTenantId = user.role === 'FULL_ADMIN' ? companyInviteTenantId : tenantId;
-
-    if (panel === 'full-admin-tenant') {
+    if (user.role === 'FULL_ADMIN') {
       return (
-        <section className="panel">
-          <h2>Create Tenant</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Create Tenant', () =>
-                callApi('/full-admin/tenants', 'POST', {
-                  name: tenantName,
-                  companyId: tenantCompanyId || undefined,
-                }),
-              );
-            }}
-          >
-            <label>Tenant Name</label>
-            <input value={tenantName} onChange={(event) => setTenantName(event.target.value)} required />
-            <label>Company ID (optional)</label>
-            <input value={tenantCompanyId} onChange={(event) => setTenantCompanyId(event.target.value)} />
-            <button disabled={loading}>Create Tenant</button>
-          </form>
-        </section>
+        <>
+          <section className="panel">
+            <h2>Create Tenant</h2>
+            <form onSubmit={handleCreateTenant}>
+              <label>Tenant Name</label>
+              <input value={tenantName} onChange={(event) => setTenantName(event.target.value)} required />
+              <label>Company ID (optional)</label>
+              <input value={tenantCompanyId} onChange={(event) => setTenantCompanyId(event.target.value)} />
+              <button disabled={loading}>Create Tenant</button>
+            </form>
+          </section>
+
+          <section className="panel">
+            <h2>Create Company Admin Invite</h2>
+            <form onSubmit={handleCreateCompanyAdminInvite}>
+              <label>Tenant</label>
+              <select value={selectedTenantId} onChange={(event) => setSelectedTenantId(event.target.value)}>
+                <option value="">Select tenant</option>
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name} ({tenant.companyId})
+                  </option>
+                ))}
+              </select>
+              <button disabled={loading || !selectedTenantId}>Create Invite</button>
+            </form>
+          </section>
+        </>
       );
     }
 
-    if (panel === 'full-admin-company-invite') {
+    if (user.role === 'COMPANY_ADMIN') {
       return (
-        <section className="panel">
-          <h2>Create Company Admin Invite</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Create Company Admin Invite', () =>
-                callApi(`/full-admin/tenants/${companyInviteTenantId}/invite-codes/company-admin`, 'POST', { maxUses: 1 }),
-              );
-            }}
-          >
-            <label>Tenant ID</label>
-            <input value={companyInviteTenantId} onChange={(event) => setCompanyInviteTenantId(event.target.value)} required />
-            <button disabled={loading}>Create Invite</button>
-          </form>
-        </section>
+        <>
+          <section className="panel">
+            <h2>Create Employee Invite</h2>
+            <form onSubmit={handleCreateEmployeeInvite}>
+              <label>Max Uses</label>
+              <input value={employeeInviteMaxUses} onChange={(event) => setEmployeeInviteMaxUses(event.target.value)} required />
+              <button disabled={loading}>Create Invite</button>
+            </form>
+          </section>
+
+          <section className="panel">
+            <h2>Set Employee Profile</h2>
+            <form onSubmit={handleSaveEmployeeProfileAsCompanyAdmin}>
+              <label>Employee User</label>
+              <select value={selectedEmployeeUserId} onChange={(event) => setSelectedEmployeeUserId(event.target.value)}>
+                <option value="">Select employee</option>
+                {tenantUsers.map((tenantUser) => (
+                  <option key={tenantUser.id} value={tenantUser.id}>
+                    {tenantUser.email}
+                  </option>
+                ))}
+              </select>
+              {renderEmployeeProfileFields()}
+              <button disabled={loading || !selectedEmployeeUserId}>Save Employee Profile</button>
+            </form>
+          </section>
+
+          <section className="panel">
+            <h2>Plan Year + Plan Setup</h2>
+            <form onSubmit={handleCreatePlanYear}>
+              <label>Plan Year Name</label>
+              <input value={planYearName} onChange={(event) => setPlanYearName(event.target.value)} required />
+              <label>Start Date</label>
+              <input type="date" value={planYearStart} onChange={(event) => setPlanYearStart(event.target.value)} required />
+              <label>End Date</label>
+              <input type="date" value={planYearEnd} onChange={(event) => setPlanYearEnd(event.target.value)} required />
+              <button disabled={loading}>Create Plan Year</button>
+            </form>
+
+            <hr />
+
+            <form onSubmit={handleCreatePlan}>
+              <label>Plan Year</label>
+              <select value={selectedPlanYearId} onChange={(event) => setSelectedPlanYearId(event.target.value)}>
+                <option value="">Select plan year</option>
+                {planYears.map((planYear) => (
+                  <option key={planYear.id} value={planYear.id}>
+                    {planYear.name} ({planYear.startDate} - {planYear.endDate})
+                  </option>
+                ))}
+              </select>
+              <label>Type</label>
+              <select value={planType} onChange={(event) => setPlanType(event.target.value as 'MEDICAL' | 'DENTAL' | 'VISION')}>
+                <option value="MEDICAL">MEDICAL</option>
+                <option value="DENTAL">DENTAL</option>
+                <option value="VISION">VISION</option>
+              </select>
+              <label>Carrier</label>
+              <input value={planCarrier} onChange={(event) => setPlanCarrier(event.target.value)} required />
+              <label>Plan Name</label>
+              <input value={planName} onChange={(event) => setPlanName(event.target.value)} required />
+              <button disabled={loading || !selectedPlanYearId}>Create Plan</button>
+            </form>
+
+            <hr />
+
+            <form onSubmit={handleSetPremiums}>
+              <label>Plan</label>
+              <select value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)}>
+                <option value="">Select plan</option>
+                {plans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.type} - {plan.planName}
+                  </option>
+                ))}
+              </select>
+
+              <label>Employee Only - Employee Cost</label>
+              <input value={employeeOnlyEmployeeCost} onChange={(event) => setEmployeeOnlyEmployeeCost(event.target.value)} required />
+              <label>Employee Only - Employer Cost</label>
+              <input value={employeeOnlyEmployerCost} onChange={(event) => setEmployeeOnlyEmployerCost(event.target.value)} required />
+
+              <label>Family - Employee Cost</label>
+              <input value={familyEmployeeCost} onChange={(event) => setFamilyEmployeeCost(event.target.value)} required />
+              <label>Family - Employer Cost</label>
+              <input value={familyEmployerCost} onChange={(event) => setFamilyEmployerCost(event.target.value)} required />
+
+              <button disabled={loading || !selectedPlanId}>Set Premiums</button>
+            </form>
+          </section>
+        </>
       );
     }
 
-    if (!scopedTenantId) {
-      return <section className="panel">Tenant ID is required for this action.</section>;
-    }
+    const filteredDraftPlans = plans.filter((plan) => plan.planYearId === draftPlanYearId);
 
-    if (panel === 'company-employee-invite') {
-      return (
+    return (
+      <>
         <section className="panel">
-          <h2>Create Employee Invite</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Create Employee Invite', () =>
-                callApi(`/tenants/${scopedTenantId}/company-admin/invite-codes/employee`, 'POST', {
-                  maxUses: Number(employeeInviteMaxUses),
-                }),
-              );
-            }}
-          >
-            <label>Max Uses</label>
-            <input value={employeeInviteMaxUses} onChange={(event) => setEmployeeInviteMaxUses(event.target.value)} required />
-            <button disabled={loading}>Create Invite</button>
-          </form>
-        </section>
-      );
-    }
-
-    if (panel === 'company-employee-profile') {
-      return (
-        <section className="panel">
-          <h2>Set Employee Profile</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Set Employee Profile', () =>
-                callApi(`/tenants/${scopedTenantId}/company-admin/employees/${employeeProfileUserId}/profile`, 'PUT', {
-                  employeeId,
-                  firstName,
-                  lastName,
-                  dob,
-                  hireDate,
-                  salaryAmount: Number(salaryAmount),
-                  benefitClass,
-                  employmentStatus,
-                }),
-              );
-            }}
-          >
-            <label>Employee User ID</label>
-            <input value={employeeProfileUserId} onChange={(event) => setEmployeeProfileUserId(event.target.value)} required />
-            {renderEmployeeFields()}
+          <h2>My Profile</h2>
+          <form onSubmit={handleSaveEmployeeProfile}>
+            {renderEmployeeProfileFields()}
             <button disabled={loading}>Save Profile</button>
           </form>
         </section>
-      );
-    }
 
-    if (panel === 'company-plan-year') {
-      return (
-        <section className="panel">
-          <h2>Create Plan Year</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Create Plan Year', () =>
-                callApi(`/tenants/${scopedTenantId}/company-admin/plan-years`, 'POST', {
-                  name: planYearName,
-                  startDate: planYearStart,
-                  endDate: planYearEnd,
-                }),
-              );
-            }}
-          >
-            <label>Name</label>
-            <input value={planYearName} onChange={(event) => setPlanYearName(event.target.value)} required />
-            <label>Start Date</label>
-            <input type="date" value={planYearStart} onChange={(event) => setPlanYearStart(event.target.value)} required />
-            <label>End Date</label>
-            <input type="date" value={planYearEnd} onChange={(event) => setPlanYearEnd(event.target.value)} required />
-            <button disabled={loading}>Create Plan Year</button>
-          </form>
-        </section>
-      );
-    }
-
-    if (panel === 'company-plan') {
-      return (
-        <section className="panel">
-          <h2>Create Plan</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Create Plan', () =>
-                callApi(`/tenants/${scopedTenantId}/company-admin/plans`, 'POST', {
-                  planYearId,
-                  type: planType,
-                  carrier: planCarrier,
-                  planName,
-                }),
-              );
-            }}
-          >
-            <label>Plan Year ID</label>
-            <input value={planYearId} onChange={(event) => setPlanYearId(event.target.value)} required />
-            <label>Plan Type</label>
-            <select value={planType} onChange={(event) => setPlanType(event.target.value)}>
-              <option value="MEDICAL">MEDICAL</option>
-              <option value="DENTAL">DENTAL</option>
-              <option value="VISION">VISION</option>
-            </select>
-            <label>Carrier</label>
-            <input value={planCarrier} onChange={(event) => setPlanCarrier(event.target.value)} required />
-            <label>Plan Name</label>
-            <input value={planName} onChange={(event) => setPlanName(event.target.value)} required />
-            <button disabled={loading}>Create Plan</button>
-          </form>
-        </section>
-      );
-    }
-
-    if (panel === 'company-plan-premiums') {
-      return (
-        <section className="panel">
-          <h2>Set Plan Premiums</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const tiers = JSON.parse(premiumsJson) as unknown;
-              void runAction('Set Plan Premiums', () =>
-                callApi(`/tenants/${scopedTenantId}/company-admin/plans/${premiumsPlanId}/premiums`, 'PUT', { tiers }),
-              );
-            }}
-          >
-            <label>Plan ID</label>
-            <input value={premiumsPlanId} onChange={(event) => setPremiumsPlanId(event.target.value)} required />
-            <label>Tiers JSON</label>
-            <textarea value={premiumsJson} onChange={(event) => setPremiumsJson(event.target.value)} rows={8} required />
-            <button disabled={loading}>Set Premiums</button>
-          </form>
-        </section>
-      );
-    }
-
-    if (panel === 'employee-profile') {
-      return (
-        <section className="panel">
-          <h2>Update My Profile</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Update Employee Profile', () =>
-                callApi(`/tenants/${scopedTenantId}/employee/profile`, 'PUT', {
-                  employeeId,
-                  firstName,
-                  lastName,
-                  dob,
-                  hireDate,
-                  salaryAmount: Number(salaryAmount),
-                  benefitClass,
-                  employmentStatus,
-                }),
-              );
-            }}
-          >
-            {renderEmployeeFields()}
-            <button disabled={loading}>Save Profile</button>
-          </form>
-        </section>
-      );
-    }
-
-    if (panel === 'employee-dependent') {
-      return (
         <section className="panel">
           <h2>Add Dependent</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAction('Add Dependent', () =>
-                callApi(`/tenants/${scopedTenantId}/employee/dependents`, 'POST', {
-                  relationship: dependentRelationship,
-                  firstName: dependentFirstName,
-                  lastName: dependentLastName,
-                  dob: dependentDob,
-                }),
-              );
-            }}
-          >
+          <form onSubmit={handleAddDependent}>
             <label>Relationship</label>
-            <select value={dependentRelationship} onChange={(event) => setDependentRelationship(event.target.value)}>
+            <select value={dependentRelationship} onChange={(event) => setDependentRelationship(event.target.value as 'SPOUSE' | 'CHILD')}>
               <option value="SPOUSE">SPOUSE</option>
               <option value="CHILD">CHILD</option>
             </select>
@@ -429,102 +612,111 @@ export function App() {
             <button disabled={loading}>Add Dependent</button>
           </form>
         </section>
-      );
-    }
 
-    if (panel === 'employee-draft') {
-      return (
         <section className="panel">
           <h2>Create Enrollment Draft</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const dependentIds = draftDependentIds
-                .split(',')
-                .map((value) => value.trim())
-                .filter(Boolean);
-
-              void runAction('Create Enrollment Draft', () =>
-                callApi(`/tenants/${scopedTenantId}/employee/enrollments/draft`, 'POST', {
-                  planYearId: draftPlanYearId,
-                  elections: [
-                    {
-                      planType: draftPlanType,
-                      planId: draftPlanId,
-                      coverageTier: draftCoverageTier,
-                    },
-                  ],
-                  dependentIds,
-                }),
-              );
-            }}
-          >
-            <label>Plan Year ID</label>
-            <input value={draftPlanYearId} onChange={(event) => setDraftPlanYearId(event.target.value)} required />
-            <label>Plan ID</label>
-            <input value={draftPlanId} onChange={(event) => setDraftPlanId(event.target.value)} required />
-            <label>Plan Type</label>
-            <select value={draftPlanType} onChange={(event) => setDraftPlanType(event.target.value)}>
-              <option value="MEDICAL">MEDICAL</option>
-              <option value="DENTAL">DENTAL</option>
-              <option value="VISION">VISION</option>
+          <form onSubmit={handleCreateDraft}>
+            <label>Plan Year</label>
+            <select value={draftPlanYearId} onChange={(event) => setDraftPlanYearId(event.target.value)}>
+              <option value="">Select plan year</option>
+              {planYears.map((planYear) => (
+                <option key={planYear.id} value={planYear.id}>
+                  {planYear.name}
+                </option>
+              ))}
             </select>
+
+            <label>Plan</label>
+            <select value={draftPlanId} onChange={(event) => setDraftPlanId(event.target.value)}>
+              <option value="">Select plan</option>
+              {filteredDraftPlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.type} - {plan.planName}
+                </option>
+              ))}
+            </select>
+
             <label>Coverage Tier</label>
-            <select value={draftCoverageTier} onChange={(event) => setDraftCoverageTier(event.target.value)}>
+            <select
+              value={draftCoverageTier}
+              onChange={(event) =>
+                setDraftCoverageTier(event.target.value as 'EMPLOYEE_ONLY' | 'EMPLOYEE_SPOUSE' | 'EMPLOYEE_CHILDREN' | 'FAMILY')
+              }
+            >
               <option value="EMPLOYEE_ONLY">EMPLOYEE_ONLY</option>
               <option value="EMPLOYEE_SPOUSE">EMPLOYEE_SPOUSE</option>
               <option value="EMPLOYEE_CHILDREN">EMPLOYEE_CHILDREN</option>
               <option value="FAMILY">FAMILY</option>
             </select>
-            <label>Dependent IDs (comma separated)</label>
-            <input value={draftDependentIds} onChange={(event) => setDraftDependentIds(event.target.value)} />
-            <button disabled={loading}>Create Draft</button>
+
+            <label>Dependents</label>
+            <select
+              multiple
+              value={selectedDependentIds}
+              onChange={(event) => {
+                const nextIds = Array.from(event.target.selectedOptions).map((option) => option.value);
+                setSelectedDependentIds(nextIds);
+              }}
+            >
+              {dependents.map((dependent) => (
+                <option key={dependent.id} value={dependent.id}>
+                  {dependent.relationship} - {dependent.firstName} {dependent.lastName}
+                </option>
+              ))}
+            </select>
+
+            <button disabled={loading || !draftPlanId || !draftPlanYearId}>Create Draft</button>
           </form>
         </section>
-      );
-    }
 
-    return (
-      <section className="panel">
-        <h2>Submit Enrollment</h2>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void runAction('Submit Enrollment', () =>
-              callApi(`/tenants/${scopedTenantId}/employee/enrollments/${submitEnrollmentId}/submit`, 'POST', {}),
-            );
-          }}
-        >
-          <label>Enrollment ID</label>
-          <input value={submitEnrollmentId} onChange={(event) => setSubmitEnrollmentId(event.target.value)} required />
-          <button disabled={loading}>Submit Enrollment</button>
-        </form>
-      </section>
+        <section className="panel">
+          <h2>Submit Enrollment</h2>
+          <form onSubmit={handleSubmitEnrollment}>
+            <label>Enrollment</label>
+            <select value={selectedEnrollmentId} onChange={(event) => setSelectedEnrollmentId(event.target.value)}>
+              <option value="">Select enrollment</option>
+              {enrollments.map((enrollment) => (
+                <option key={enrollment.id} value={enrollment.id}>
+                  {enrollment.status} - {enrollment.planYearId}
+                </option>
+              ))}
+            </select>
+            <button disabled={loading || !selectedEnrollmentId}>Submit Enrollment</button>
+          </form>
+        </section>
+      </>
     );
   }
 
-  function renderEmployeeFields() {
+  function renderEmployeeProfileFields() {
     return (
       <>
         <label>Employee ID</label>
         <input value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} required />
+
         <label>First Name</label>
         <input value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
+
         <label>Last Name</label>
         <input value={lastName} onChange={(event) => setLastName(event.target.value)} required />
+
         <label>DOB</label>
         <input type="date" value={dob} onChange={(event) => setDob(event.target.value)} required />
+
         <label>Hire Date</label>
         <input type="date" value={hireDate} onChange={(event) => setHireDate(event.target.value)} required />
+
         <label>Salary Amount</label>
         <input value={salaryAmount} onChange={(event) => setSalaryAmount(event.target.value)} required />
+
         <label>Benefit Class</label>
-        <select value={benefitClass} onChange={(event) => setBenefitClass(event.target.value)}>
+        <select value={benefitClass} onChange={(event) => setBenefitClass(event.target.value as 'FULL_TIME_ELIGIBLE' | 'INELIGIBLE')}>
           <option value="FULL_TIME_ELIGIBLE">FULL_TIME_ELIGIBLE</option>
           <option value="INELIGIBLE">INELIGIBLE</option>
         </select>
+
         <label>Employment Status</label>
-        <select value={employmentStatus} onChange={(event) => setEmploymentStatus(event.target.value)}>
+        <select value={employmentStatus} onChange={(event) => setEmploymentStatus(event.target.value as 'ACTIVE' | 'TERMED')}>
           <option value="ACTIVE">ACTIVE</option>
           <option value="TERMED">TERMED</option>
         </select>
@@ -536,7 +728,7 @@ export function App() {
     <div className="app-shell">
       <header className="app-header">
         <h1>Benefits Enrollment MVP Console</h1>
-        <p>Role-aware shell for platform admin, company admin, and employee workflows.</p>
+        <p>Typed API + role-aware guided workflows.</p>
         <label className="api-label">
           API Base URL
           <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
@@ -553,62 +745,75 @@ export function App() {
             <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} required />
             <button disabled={loading}>Sign In</button>
           </form>
+
+          <hr />
+
+          <h2>Password Reset</h2>
+          <form onSubmit={handlePasswordResetRequest}>
+            <label>Email</label>
+            <input value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} required />
+            <button disabled={loading}>Request Reset</button>
+          </form>
+
+          <form onSubmit={handlePasswordResetConfirm}>
+            <label>Reset Token</label>
+            <input value={resetToken} onChange={(event) => setResetToken(event.target.value)} required />
+            <label>New Password</label>
+            <input value={resetNewPassword} onChange={(event) => setResetNewPassword(event.target.value)} required />
+            <button disabled={loading}>Confirm Reset</button>
+          </form>
         </section>
       )}
 
       {user && (
-        <main className="workspace">
-          <aside className="sidebar">
-            <div className="session-meta">
-              <strong>{user.email}</strong>
-              <span>{user.role}</span>
-              <span>{user.tenantId ?? 'Platform scope'}</span>
-            </div>
+        <>
+          <section className="panel">
+            <h2>Session</h2>
+            <p>
+              <strong>{user.email}</strong> ({user.role})
+            </p>
+            <p>Tenant: {tenantId ?? 'Platform scope'}</p>
             <div className="nav-list">
-              {visiblePanels.map((entry) => (
-                <button
-                  key={entry}
-                  className={entry === panel ? 'active' : ''}
-                  onClick={() => setPanel(entry)}
-                >
-                  {PANEL_LABELS[entry]}
-                </button>
-              ))}
+              <button onClick={() => void runAction('Refresh data', () => refreshReferenceData())} disabled={loading}>
+                Refresh Data
+              </button>
+              <button onClick={() => void runAction('Logout all sessions', () => api.logoutAll(), () => {
+                setUser(null);
+                setTokens(null);
+              })} disabled={loading}>
+                Logout All
+              </button>
+              <button className="logout" onClick={() => void handleLogout()} disabled={loading}>
+                Logout
+              </button>
             </div>
-            <button className="logout" onClick={logout}>
-              Logout
-            </button>
-          </aside>
+          </section>
 
-          <section className="content">{renderPanel()}</section>
-        </main>
+          <main className="workspace">
+            <section className="content">{renderRolePanels()}</section>
+          </main>
+        </>
       )}
 
-      {(error || result) && (
+      {(message || error) && (
         <section className="panel response-panel">
-          <h2>Response</h2>
+          <h2>Status</h2>
+          {message && <p>{message}</p>}
           {error && <p className="error-text">{error}</p>}
-          <pre>{result}</pre>
         </section>
       )}
     </div>
   );
 }
 
-function isLoginBody(value: unknown): value is { accessToken: string; user: SessionUser } {
-  if (typeof value !== 'object' || value === null) {
-    return false;
+function stringifyError(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
   }
 
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.accessToken !== 'string') {
-    return false;
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value);
   }
 
-  const user = candidate.user as Record<string, unknown> | undefined;
-  if (!user) {
-    return false;
-  }
-
-  return typeof user.id === 'string' && typeof user.email === 'string' && typeof user.role === 'string';
+  return 'Unknown error';
 }

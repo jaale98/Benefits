@@ -1,5 +1,6 @@
 import type { AuthUser } from '../types/auth.js';
 import type {
+  AuthSessionRecord,
   CoverageTier,
   DependentRecord,
   DependentRelationship,
@@ -11,6 +12,7 @@ import type {
   PlanRecord,
   PlanType,
   PlanYearRecord,
+  PasswordResetTokenRecord,
   TenantRecord,
   UserRecord,
 } from '../types/domain.js';
@@ -97,6 +99,26 @@ export interface SubmitEnrollmentInput {
   enrollmentId: string;
 }
 
+export interface CreateAuthSessionInput {
+  userId: string;
+  refreshTokenHash: string;
+  expiresAt: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
+
+export interface RevokeAuthSessionInput {
+  sessionId: string;
+  reason: string;
+  replacedBySessionId?: string | null;
+}
+
+export interface CreatePasswordResetTokenInput {
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+}
+
 export type MaybePromise<T> = T | Promise<T>;
 
 export interface DbAdapter {
@@ -119,4 +141,18 @@ export interface DbAdapter {
   addDependent(input: AddDependentInput): MaybePromise<DependentRecord>;
   createEnrollmentDraft(input: CreateEnrollmentDraftInput): MaybePromise<EnrollmentRecord>;
   submitEnrollment(input: SubmitEnrollmentInput): MaybePromise<EnrollmentRecord>;
+  createAuthSession(input: CreateAuthSessionInput): MaybePromise<AuthSessionRecord>;
+  findAuthSessionByRefreshTokenHash(refreshTokenHash: string): MaybePromise<AuthSessionRecord | undefined>;
+  revokeAuthSession(input: RevokeAuthSessionInput): MaybePromise<void>;
+  revokeAllAuthSessionsForUser(userId: string, reason: string): MaybePromise<void>;
+  isAuthSessionActive(sessionId: string): MaybePromise<boolean>;
+  createPasswordResetToken(input: CreatePasswordResetTokenInput): MaybePromise<PasswordResetTokenRecord>;
+  findPasswordResetTokenByHash(tokenHash: string): MaybePromise<PasswordResetTokenRecord | undefined>;
+  markPasswordResetTokenUsed(tokenId: string): MaybePromise<void>;
+  updateUserPasswordHash(userId: string, passwordHash: string): MaybePromise<void>;
+  listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): MaybePromise<UserRecord[]>;
+  listPlanYears(tenantId: string): MaybePromise<PlanYearRecord[]>;
+  listPlans(tenantId: string, planYearId?: string): MaybePromise<PlanRecord[]>;
+  listEmployeeDependents(tenantId: string, employeeUserId: string): MaybePromise<DependentRecord[]>;
+  listEmployeeEnrollments(tenantId: string, employeeUserId: string): MaybePromise<EnrollmentRecord[]>;
 }

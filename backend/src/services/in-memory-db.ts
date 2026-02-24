@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { env } from '../config/env.js';
 import type { AuthUser, Role } from '../types/auth.js';
 import type {
+  AuthSessionRecord,
   CoverageTier,
   DependentRecord,
   DependentRelationship,
@@ -11,6 +12,7 @@ import type {
   EnrollmentRecord,
   InviteCodeRecord,
   InviteTargetRole,
+  PasswordResetTokenRecord,
   PlanPremiumRecord,
   PlanRecord,
   PlanType,
@@ -118,6 +120,8 @@ export class InMemoryDb implements DbAdapter {
   private planPremiums: PlanPremiumRecord[] = [];
   private dependents: DependentRecord[] = [];
   private enrollments: EnrollmentRecord[] = [];
+  private authSessions: AuthSessionRecord[] = [];
+  private passwordResetTokens: PasswordResetTokenRecord[] = [];
 
   async init(): Promise<void> {
     if (this.initialized) {
@@ -183,6 +187,10 @@ export class InMemoryDb implements DbAdapter {
 
   findUserById(userId: string): UserRecord | undefined {
     return this.users.find((user) => user.id === userId);
+  }
+
+  listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): UserRecord[] {
+    return this.users.filter((user) => user.tenantId === tenantId && (!role || user.role === role));
   }
 
   toAuthUser(user: UserRecord): AuthUser {
@@ -378,6 +386,12 @@ export class InMemoryDb implements DbAdapter {
     return planYear;
   }
 
+  listPlanYears(tenantId: string): PlanYearRecord[] {
+    return this.planYears
+      .filter((planYear) => planYear.tenantId === tenantId)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  }
+
   createPlan(input: CreatePlanInput): PlanRecord {
     const planYear = this.planYears.find((candidate) => candidate.id === input.planYearId && candidate.tenantId === input.tenantId);
     if (!planYear) {
@@ -399,6 +413,18 @@ export class InMemoryDb implements DbAdapter {
 
     this.plans.push(plan);
     return plan;
+  }
+
+  listPlans(tenantId: string, planYearId?: string): PlanRecord[] {
+    return this.plans.filter((plan) => {
+      if (plan.tenantId !== tenantId) {
+        return false;
+      }
+      if (planYearId && plan.planYearId !== planYearId) {
+        return false;
+      }
+      return true;
+    });
   }
 
   replacePlanPremiums(input: ReplacePlanPremiumsInput): PlanPremiumRecord[] {
@@ -456,6 +482,18 @@ export class InMemoryDb implements DbAdapter {
 
     this.dependents.push(dependent);
     return dependent;
+  }
+
+  listEmployeeDependents(tenantId: string, employeeUserId: string): DependentRecord[] {
+    return this.dependents.filter(
+      (dependent) => dependent.tenantId === tenantId && dependent.employeeUserId === employeeUserId,
+    );
+  }
+
+  listEmployeeEnrollments(tenantId: string, employeeUserId: string): EnrollmentRecord[] {
+    return this.enrollments.filter(
+      (enrollment) => enrollment.tenantId === tenantId && enrollment.employeeUserId === employeeUserId,
+    );
   }
 
   createEnrollmentDraft(input: CreateEnrollmentDraftInput): EnrollmentRecord {
@@ -600,6 +638,106 @@ export class InMemoryDb implements DbAdapter {
     enrollment.updatedAt = now;
 
     return enrollment;
+  }
+
+  createAuthSession(input: {
+    userId: string;
+    refreshTokenHash: string;
+    expiresAt: string;
+    userAgent?: string | null;
+    ipAddress?: string | null;
+  }): AuthSessionRecord {
+    const now = this.nowIso();
+    const session: AuthSessionRecord = {
+      id: uuidv4(),
+      userId: input.userId,
+      refreshTokenHash: input.refreshTokenHash,
+      userAgent: input.userAgent ?? null,
+      ipAddress: input.ipAddress ?? null,
+      createdAt: now,
+      expiresAt: input.expiresAt,
+      revokedAt: null,
+      revokedReason: null,
+      replacedBySessionId: null,
+    };
+    this.authSessions.push(session);
+    return session;
+  }
+
+  findAuthSessionByRefreshTokenHash(refreshTokenHash: string): AuthSessionRecord | undefined {
+    return this.authSessions.find((session) => session.refreshTokenHash === refreshTokenHash);
+  }
+
+  revokeAuthSession(input: { sessionId: string; reason: string; replacedBySessionId?: string | null }): void {
+    const session = this.authSessions.find((candidate) => candidate.id === input.sessionId);
+    if (!session || session.revokedAt) {
+      return;
+    }
+
+    session.revokedAt = this.nowIso();
+    session.revokedReason = input.reason;
+    session.replacedBySessionId = input.replacedBySessionId ?? null;
+  }
+
+  revokeAllAuthSessionsForUser(userId: string, reason: string): void {
+    const now = this.nowIso();
+    for (const session of this.authSessions) {
+      if (session.userId === userId && !session.revokedAt) {
+        session.revokedAt = now;
+        session.revokedReason = reason;
+      }
+    }
+  }
+
+  isAuthSessionActive(sessionId: string): boolean {
+    const session = this.authSessions.find((candidate) => candidate.id === sessionId);
+    if (!session) {
+      return false;
+    }
+
+    if (session.revokedAt) {
+      return false;
+    }
+
+    if (new Date(session.expiresAt).getTime() <= Date.now()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  createPasswordResetToken(input: { userId: string; tokenHash: string; expiresAt: string }): PasswordResetTokenRecord {
+    const token: PasswordResetTokenRecord = {
+      id: uuidv4(),
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      createdAt: this.nowIso(),
+      expiresAt: input.expiresAt,
+      usedAt: null,
+    };
+    this.passwordResetTokens.push(token);
+    return token;
+  }
+
+  findPasswordResetTokenByHash(tokenHash: string): PasswordResetTokenRecord | undefined {
+    return this.passwordResetTokens.find((candidate) => candidate.tokenHash === tokenHash);
+  }
+
+  markPasswordResetTokenUsed(tokenId: string): void {
+    const token = this.passwordResetTokens.find((candidate) => candidate.id === tokenId);
+    if (!token) {
+      return;
+    }
+    token.usedAt = this.nowIso();
+  }
+
+  updateUserPasswordHash(userId: string, passwordHash: string): void {
+    const user = this.users.find((candidate) => candidate.id === userId);
+    if (!user) {
+      throw new HttpError(404, 'User not found');
+    }
+    user.passwordHash = passwordHash;
+    user.updatedAt = this.nowIso();
   }
 
   private assertEmployeeInTenant(employeeUserId: string, tenantId: string): void {

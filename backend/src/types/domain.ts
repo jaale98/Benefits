@@ -27,6 +27,28 @@ export interface UserRecord {
   updatedAt: string;
 }
 
+export interface AuthSessionRecord {
+  id: string;
+  userId: string;
+  refreshTokenHash: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  replacedBySessionId: string | null;
+}
+
+export interface PasswordResetTokenRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
 export interface InviteCodeRecord {
   id: string;
   tenantId: string;

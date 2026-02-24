@@ -3,11 +3,13 @@ import { Pool, type PoolClient } from 'pg';
 import { env } from '../config/env.js';
 import type { AuthUser, Role } from '../types/auth.js';
 import type {
+  AuthSessionRecord,
   DependentRecord,
   EmployeeProfileRecord,
   EnrollmentElectionSnapshot,
   EnrollmentRecord,
   InviteCodeRecord,
+  PasswordResetTokenRecord,
   PlanPremiumRecord,
   PlanRecord,
   PlanYearRecord,
@@ -16,14 +18,18 @@ import type {
 } from '../types/domain.js';
 import { HttpError } from '../types/http-error.js';
 import { hashPassword } from './password-service.js';
+import { assertSchemaUpToDate, runMigrations } from './migration-runner.js';
 import type {
   AddDependentInput,
+  CreateAuthSessionInput,
   CreateEnrollmentDraftInput,
   CreateInviteCodeInput,
+  CreatePasswordResetTokenInput,
   CreatePlanInput,
   CreatePlanYearInput,
   DbAdapter,
   EmployeeProfileInput,
+  RevokeAuthSessionInput,
   ReplacePlanPremiumsInput,
   SignupWithInviteInput,
   SubmitEnrollmentInput,
@@ -62,6 +68,12 @@ export class PostgresDb implements DbAdapter {
     }
 
     await this.pool.query('SELECT 1');
+    if (env.DB_AUTO_MIGRATE) {
+      await runMigrations(this.pool);
+    }
+    if (env.DB_REQUIRE_SCHEMA_CHECK) {
+      await assertSchemaUpToDate(this.pool);
+    }
     await this.seedFullAdmin();
     this.initialized = true;
   }
@@ -131,6 +143,89 @@ export class PostgresDb implements DbAdapter {
     }
 
     return mapUser(result.rows[0]);
+  }
+
+  async listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): Promise<UserRecord[]> {
+    const values: unknown[] = [tenantId];
+    let whereClause = 'tenant_id = $1';
+
+    if (role) {
+      values.push(role);
+      whereClause += ` AND role = $${values.length}`;
+    }
+
+    const result = await this.pool.query<UserRow>(
+      `SELECT id, tenant_id, email, password_hash, role, is_active, created_at, updated_at
+       FROM users
+       WHERE ${whereClause}
+       ORDER BY created_at DESC`,
+      values,
+    );
+
+    return result.rows.map(mapUser);
+  }
+
+  async listPlanYears(tenantId: string): Promise<PlanYearRecord[]> {
+    const result = await this.pool.query(
+      `SELECT
+         id, tenant_id, name, start_date, end_date,
+         created_by_user_id, created_at, updated_at
+       FROM plan_years
+       WHERE tenant_id = $1
+       ORDER BY start_date ASC`,
+      [tenantId],
+    );
+
+    return result.rows.map(mapPlanYear);
+  }
+
+  async listPlans(tenantId: string, planYearId?: string): Promise<PlanRecord[]> {
+    const values: unknown[] = [tenantId];
+    let whereClause = 'tenant_id = $1';
+
+    if (planYearId) {
+      values.push(planYearId);
+      whereClause += ` AND plan_year_id = $${values.length}`;
+    }
+
+    const result = await this.pool.query(
+      `SELECT
+         id, tenant_id, plan_year_id, type, carrier, plan_name,
+         is_active, created_at, updated_at
+       FROM plans
+       WHERE ${whereClause}
+       ORDER BY created_at DESC`,
+      values,
+    );
+
+    return result.rows.map(mapPlan);
+  }
+
+  async listEmployeeDependents(tenantId: string, employeeUserId: string): Promise<DependentRecord[]> {
+    const result = await this.pool.query(
+      `SELECT
+         id, tenant_id, employee_user_id, relationship,
+         first_name, last_name, dob, created_at, updated_at
+       FROM dependents
+       WHERE tenant_id = $1 AND employee_user_id = $2
+       ORDER BY created_at DESC`,
+      [tenantId, employeeUserId],
+    );
+
+    return result.rows.map(mapDependent);
+  }
+
+  async listEmployeeEnrollments(tenantId: string, employeeUserId: string): Promise<EnrollmentRecord[]> {
+    const idsResult = await this.pool.query<{ id: string }>(
+      `SELECT id\n       FROM enrollments\n       WHERE tenant_id = $1 AND employee_user_id = $2\n       ORDER BY created_at DESC`,
+      [tenantId, employeeUserId],
+    );
+
+    const enrollments: EnrollmentRecord[] = [];
+    for (const row of idsResult.rows) {
+      enrollments.push(await this.getEnrollment(this.pool, row.id));
+    }
+    return enrollments;
   }
 
   toAuthUser(user: UserRecord): AuthUser {
@@ -625,6 +720,87 @@ export class PostgresDb implements DbAdapter {
     });
   }
 
+  async createAuthSession(input: CreateAuthSessionInput): Promise<AuthSessionRecord> {
+    const result = await this.pool.query(
+      `INSERT INTO auth_sessions\n        (user_id, refresh_token_hash, user_agent, ip_address, expires_at)\n       VALUES ($1, $2, $3, $4, $5)\n       RETURNING\n         id, user_id, refresh_token_hash, user_agent, ip_address,\n         created_at, expires_at, revoked_at, revoked_reason, replaced_by_session_id`,
+      [input.userId, input.refreshTokenHash, input.userAgent ?? null, input.ipAddress ?? null, input.expiresAt],
+    );
+
+    return mapAuthSession(result.rows[0]);
+  }
+
+  async findAuthSessionByRefreshTokenHash(refreshTokenHash: string): Promise<AuthSessionRecord | undefined> {
+    const result = await this.pool.query(
+      `SELECT\n         id, user_id, refresh_token_hash, user_agent, ip_address,\n         created_at, expires_at, revoked_at, revoked_reason, replaced_by_session_id\n       FROM auth_sessions\n       WHERE refresh_token_hash = $1\n       LIMIT 1`,
+      [refreshTokenHash],
+    );
+
+    if (!result.rowCount) {
+      return undefined;
+    }
+
+    return mapAuthSession(result.rows[0]);
+  }
+
+  async revokeAuthSession(input: RevokeAuthSessionInput): Promise<void> {
+    await this.pool.query(
+      `UPDATE auth_sessions\n       SET revoked_at = COALESCE(revoked_at, NOW()),\n           revoked_reason = COALESCE(revoked_reason, $2),\n           replaced_by_session_id = COALESCE(replaced_by_session_id, $3)\n       WHERE id = $1`,
+      [input.sessionId, input.reason, input.replacedBySessionId ?? null],
+    );
+  }
+
+  async revokeAllAuthSessionsForUser(userId: string, reason: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE auth_sessions\n       SET revoked_at = COALESCE(revoked_at, NOW()),\n           revoked_reason = COALESCE(revoked_reason, $2)\n       WHERE user_id = $1`,
+      [userId, reason],
+    );
+  }
+
+  async isAuthSessionActive(sessionId: string): Promise<boolean> {
+    const result = await this.pool.query<{ active: boolean }>(
+      `SELECT EXISTS (\n         SELECT 1\n         FROM auth_sessions\n         WHERE id = $1\n           AND revoked_at IS NULL\n           AND expires_at > NOW()\n       ) AS active`,
+      [sessionId],
+    );
+
+    return Boolean(result.rows[0]?.active);
+  }
+
+  async createPasswordResetToken(input: CreatePasswordResetTokenInput): Promise<PasswordResetTokenRecord> {
+    const result = await this.pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)\n       VALUES ($1, $2, $3)\n       RETURNING id, user_id, token_hash, created_at, expires_at, used_at`,
+      [input.userId, input.tokenHash, input.expiresAt],
+    );
+
+    return mapPasswordResetToken(result.rows[0]);
+  }
+
+  async findPasswordResetTokenByHash(tokenHash: string): Promise<PasswordResetTokenRecord | undefined> {
+    const result = await this.pool.query(
+      `SELECT id, user_id, token_hash, created_at, expires_at, used_at\n       FROM password_reset_tokens\n       WHERE token_hash = $1\n       LIMIT 1`,
+      [tokenHash],
+    );
+
+    if (!result.rowCount) {
+      return undefined;
+    }
+
+    return mapPasswordResetToken(result.rows[0]);
+  }
+
+  async markPasswordResetTokenUsed(tokenId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE password_reset_tokens\n       SET used_at = COALESCE(used_at, NOW())\n       WHERE id = $1`,
+      [tokenId],
+    );
+  }
+
+  async updateUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE users\n       SET password_hash = $2,\n           updated_at = NOW()\n       WHERE id = $1`,
+      [userId, passwordHash],
+    );
+  }
+
   private async seedFullAdmin(): Promise<void> {
     const existing = await this.pool.query(`SELECT id, role FROM users WHERE email = $1 LIMIT 1`, [
       env.SEED_FULL_ADMIN_EMAIL.toLowerCase(),
@@ -850,6 +1026,32 @@ function mapDependent(row: Record<string, unknown>): DependentRecord {
     dob: toDateOnlyString(row.dob),
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function mapAuthSession(row: Record<string, unknown>): AuthSessionRecord {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    refreshTokenHash: row.refresh_token_hash as string,
+    userAgent: (row.user_agent as string | null) ?? null,
+    ipAddress: (row.ip_address as string | null) ?? null,
+    createdAt: toIsoString(row.created_at),
+    expiresAt: toIsoString(row.expires_at),
+    revokedAt: row.revoked_at ? toIsoString(row.revoked_at) : null,
+    revokedReason: (row.revoked_reason as string | null) ?? null,
+    replacedBySessionId: (row.replaced_by_session_id as string | null) ?? null,
+  };
+}
+
+function mapPasswordResetToken(row: Record<string, unknown>): PasswordResetTokenRecord {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    tokenHash: row.token_hash as string,
+    createdAt: toIsoString(row.created_at),
+    expiresAt: toIsoString(row.expires_at),
+    usedAt: row.used_at ? toIsoString(row.used_at) : null,
   };
 }
 

@@ -6,6 +6,7 @@ interface JwtPayload {
   email: string;
   role: AuthUser['role'];
   tenantId: string | null;
+  sid?: string;
   sub?: string;
 }
 
@@ -14,6 +15,7 @@ export function signAccessToken(user: AuthUser): string {
     email: user.email,
     role: user.role,
     tenantId: user.tenantId,
+    sid: user.sessionId,
   };
 
   const signOptions: jwt.SignOptions = {
@@ -35,5 +37,6 @@ export function verifyAccessToken(token: string): AuthUser {
     email: decoded.email,
     role: decoded.role,
     tenantId: decoded.tenantId,
+    sessionId: decoded.sid,
   };
 }

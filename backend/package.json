@@ -7,12 +7,15 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "migrate": "tsx src/scripts/migrate.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "DB_PROVIDER=memory JWT_SECRET=test-jwt-secret-at-least-32-characters SEED_FULL_ADMIN_EMAIL=platform-admin@example.com SEED_FULL_ADMIN_PASSWORD=ChangeMe123! vitest run",
-    "test:watch": "DB_PROVIDER=memory JWT_SECRET=test-jwt-secret-at-least-32-characters SEED_FULL_ADMIN_EMAIL=platform-admin@example.com SEED_FULL_ADMIN_PASSWORD=ChangeMe123! vitest"
+    "test:watch": "DB_PROVIDER=memory JWT_SECRET=test-jwt-secret-at-least-32-characters SEED_FULL_ADMIN_EMAIL=platform-admin@example.com SEED_FULL_ADMIN_PASSWORD=ChangeMe123! vitest",
+    "start:e2e": "tsx src/index.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",

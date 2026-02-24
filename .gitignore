@@ -6,6 +6,8 @@ node_modules/
 /backend/.env
 /frontend/dist/
 /frontend/.env
+/frontend/playwright-report/
+/frontend/test-results/
 
 # OS/editor
 .DS_Store
