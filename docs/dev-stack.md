@@ -1,5 +1,25 @@
 # Local Dev Stack
 
+## One-command full stack boot (postgres + backend + frontend)
+
+From repo root:
+
+```bash
+make dev-up
+```
+
+Services:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:4000`
+- Postgres: `localhost:5432`
+
+Stop:
+
+```bash
+make dev-down
+```
+
 ## One-command Postgres boot
 
 From repo root:

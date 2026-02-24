@@ -17,5 +17,41 @@ services:
     volumes:
       - benefits_postgres_data:/var/lib/postgresql/data
 
+  backend:
+    image: node:22-alpine
+    profiles: ["app"]
+    working_dir: /workspace/backend
+    command: sh -c "npm ci && npm run dev"
+    environment:
+      DB_PROVIDER: postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/benefits
+      DB_AUTO_MIGRATE: "true"
+      DB_REQUIRE_SCHEMA_CHECK: "true"
+      JWT_SECRET: test-jwt-secret-at-least-32-characters
+      CORS_ORIGIN: http://localhost:5173
+      SEED_FULL_ADMIN_EMAIL: platform-admin@example.com
+      SEED_FULL_ADMIN_PASSWORD: ChangeMe123!
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./:/workspace
+
+  frontend:
+    image: node:22-alpine
+    profiles: ["app"]
+    working_dir: /workspace/frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:4000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./:/workspace
+
 volumes:
   benefits_postgres_data:

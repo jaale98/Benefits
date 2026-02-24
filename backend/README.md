@@ -69,3 +69,4 @@ Use these credentials with `POST /auth/login`.
 - API contract is in `/docs/api/openapi.yaml`.
 - Integration tests: `npm test`.
 - Postgres integration tests: `npm run test:postgres` (requires `DATABASE_URL`).
+- Demo seed (tenant + users + plans + enrollment): `npm run seed:demo`.

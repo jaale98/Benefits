@@ -10,6 +10,7 @@ type PlanYear = components['schemas']['PlanYear'];
 type Plan = components['schemas']['Plan'];
 type Dependent = components['schemas']['Dependent'];
 type Enrollment = components['schemas']['Enrollment'];
+type SecurityEvent = components['schemas']['SecurityEvent'];
 
 const DEFAULT_LOGIN_EMAIL = 'platform-admin@example.com';
 const DEFAULT_LOGIN_PASSWORD = 'ChangeMe123!';
@@ -42,6 +43,8 @@ export function App() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [dependents, setDependents] = useState<Dependent[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [fullAdminSecurityEvents, setFullAdminSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [companyAdminSecurityEvents, setCompanyAdminSecurityEvents] = useState<SecurityEvent[]>([]);
 
   const [tenantName, setTenantName] = useState('');
   const [tenantCompanyId, setTenantCompanyId] = useState('');
@@ -161,9 +164,14 @@ export function App() {
     }
 
     if (user.role === 'FULL_ADMIN') {
-      const tenantResponse = await api.listTenants();
+      const [tenantResponse, securityEventResponse] = await Promise.all([
+        api.listTenants(),
+        api.listFullAdminSecurityEvents(50),
+      ]);
       const nextTenants = tenantResponse.tenants ?? [];
       setTenants(nextTenants);
+      setFullAdminSecurityEvents(securityEventResponse.events ?? []);
+      setCompanyAdminSecurityEvents([]);
       if (!selectedTenantId && nextTenants.length > 0) {
         setSelectedTenantId(nextTenants[0].id ?? '');
       }
@@ -175,15 +183,18 @@ export function App() {
     }
 
     if (user.role === 'COMPANY_ADMIN') {
-      const [usersResponse, planYearsResponse, plansResponse] = await Promise.all([
+      const [usersResponse, planYearsResponse, plansResponse, securityEventsResponse] = await Promise.all([
         api.listTenantUsers(tenantId, 'EMPLOYEE'),
         api.listPlanYearsAsCompanyAdmin(tenantId),
         api.listPlansAsCompanyAdmin(tenantId),
+        api.listCompanyAdminSecurityEvents(tenantId, 50),
       ]);
 
       setTenantUsers(usersResponse.users ?? []);
       setPlanYears(planYearsResponse.planYears ?? []);
       setPlans(plansResponse.plans ?? []);
+      setCompanyAdminSecurityEvents(securityEventsResponse.events ?? []);
+      setFullAdminSecurityEvents([]);
 
       if (!selectedEmployeeUserId && (usersResponse.users ?? []).length > 0) {
         setSelectedEmployeeUserId(usersResponse.users?.[0]?.id ?? '');
@@ -202,6 +213,8 @@ export function App() {
     setPlans(plansResponse.plans ?? []);
     setDependents(dependentsResponse.dependents ?? []);
     setEnrollments(enrollmentsResponse.enrollments ?? []);
+    setFullAdminSecurityEvents([]);
+    setCompanyAdminSecurityEvents([]);
 
     if (!selectedEnrollmentId && (enrollmentsResponse.enrollments ?? []).length > 0) {
       setSelectedEnrollmentId(enrollmentsResponse.enrollments?.[0]?.id ?? '');
@@ -250,6 +263,8 @@ export function App() {
       setPlans([]);
       setDependents([]);
       setEnrollments([]);
+      setFullAdminSecurityEvents([]);
+      setCompanyAdminSecurityEvents([]);
       setLatestCompanyAdminInviteCode('');
       setLatestEmployeeInviteCode('');
     });
@@ -537,6 +552,11 @@ export function App() {
             </form>
             {latestCompanyAdminInviteCode && <p>Latest code: {latestCompanyAdminInviteCode}</p>}
           </section>
+
+          <section className="panel">
+            <h2>Recent Security Events</h2>
+            {renderSecurityEventList(fullAdminSecurityEvents)}
+          </section>
         </>
       );
     }
@@ -652,11 +672,17 @@ export function App() {
               <button disabled={loading || !selectedPlanId}>Set Premiums</button>
             </form>
           </section>
+
+          <section className="panel">
+            <h2>Recent Security Events</h2>
+            {renderSecurityEventList(companyAdminSecurityEvents)}
+          </section>
         </>
       );
     }
 
     const filteredDraftPlans = plans.filter((plan) => plan.planYearId === draftPlanYearId);
+    const selectedEnrollment = enrollments.find((enrollment) => enrollment.id === selectedEnrollmentId) ?? null;
 
     return (
       <>
@@ -757,7 +783,76 @@ export function App() {
             <button disabled={loading || !selectedEnrollmentId}>Submit Enrollment</button>
           </form>
         </section>
+
+        <section className="panel">
+          <h2>Enrollment Receipt</h2>
+          {selectedEnrollment ? (
+            <>
+              <p>Status: {selectedEnrollment.status}</p>
+              <p>Effective Date: {selectedEnrollment.effectiveDate ?? 'Pending submit'}</p>
+              <p>Confirmation: {selectedEnrollment.confirmationCode ?? 'Not submitted'}</p>
+              <p>
+                Total Employee Monthly: $
+                {selectedEnrollment.elections
+                  .reduce((sum, election) => sum + election.employeeMonthlyCost, 0)
+                  .toFixed(2)}
+              </p>
+              <p>
+                Total Employer Monthly: $
+                {selectedEnrollment.elections
+                  .reduce((sum, election) => sum + election.employerMonthlyCost, 0)
+                  .toFixed(2)}
+              </p>
+              <ul className="compact-list">
+                {selectedEnrollment.elections.map((election) => {
+                  const plan = plans.find((candidate) => candidate.id === election.planId);
+                  const planLabel = plan ? `${plan.type} - ${plan.planName}` : election.planId;
+                  return (
+                    <li key={`${selectedEnrollment.id}-${election.planType}`}>
+                      {planLabel} | {election.coverageTier} | Employee ${' '}
+                      {election.employeeMonthlyCost.toFixed(2)} | Employer ${' '}
+                      {election.employerMonthlyCost.toFixed(2)}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p>Dependents:</p>
+              <ul className="compact-list">
+                {selectedEnrollment.dependentIds.length === 0 && <li>None</li>}
+                {selectedEnrollment.dependentIds.map((dependentId) => {
+                  const dependent = dependents.find((candidate) => candidate.id === dependentId);
+                  return (
+                    <li key={dependentId}>
+                      {dependent
+                        ? `${dependent.relationship} - ${dependent.firstName} ${dependent.lastName}`
+                        : dependentId}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <p>Select an enrollment to view receipt details.</p>
+          )}
+        </section>
       </>
+    );
+  }
+
+  function renderSecurityEventList(events: SecurityEvent[]) {
+    if (events.length === 0) {
+      return <p>No events yet.</p>;
+    }
+
+    return (
+      <ul className="compact-list">
+        {events.map((event) => (
+          <li key={event.id}>
+            [{event.severity}] {event.eventType} | {new Date(event.createdAt).toLocaleString()} | user{' '}
+            {event.userId ?? 'unknown'}
+          </li>
+        ))}
+      </ul>
     );
   }
 

@@ -7,6 +7,8 @@ Role-aware React shell for:
 - `EMPLOYEE` profile + dependent + enrollment draft/submit workflows
 - Invite-based self-signup from the UI
 - Premium configuration for all four coverage tiers
+- Security event visibility for full admin and company admin
+- Employee enrollment receipt view
 
 ## Run
 

@@ -101,6 +101,11 @@ export class ApiClient {
     return this.request(`/full-admin/tenants/${tenantId}/invite-codes/company-admin`, 'POST', payload, true);
   }
 
+  async listFullAdminSecurityEvents(limit?: number): Promise<{ events?: components['schemas']['SecurityEvent'][] }> {
+    const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return this.request(`/full-admin/security-events${query}`, 'GET', undefined, true);
+  }
+
   async listTenantUsers(tenantId: string, role?: 'COMPANY_ADMIN' | 'EMPLOYEE'): Promise<{ users?: components['schemas']['User'][] }> {
     const query = role ? `?role=${encodeURIComponent(role)}` : '';
     return this.request(`/tenants/${tenantId}/company-admin/users${query}`, 'GET', undefined, true);
@@ -108,6 +113,14 @@ export class ApiClient {
 
   async createEmployeeInvite(tenantId: string, payload: components['schemas']['CreateInviteCodeRequest']): Promise<{ inviteCode?: components['schemas']['InviteCode'] }> {
     return this.request(`/tenants/${tenantId}/company-admin/invite-codes/employee`, 'POST', payload, true);
+  }
+
+  async listCompanyAdminSecurityEvents(
+    tenantId: string,
+    limit?: number,
+  ): Promise<{ events?: components['schemas']['SecurityEvent'][] }> {
+    const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return this.request(`/tenants/${tenantId}/company-admin/security-events${query}`, 'GET', undefined, true);
   }
 
   async upsertEmployeeProfileAsCompanyAdmin(
