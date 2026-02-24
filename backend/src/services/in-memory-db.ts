@@ -22,6 +22,7 @@ import type {
   UserRecord,
 } from '../types/domain.js';
 import { HttpError } from '../types/http-error.js';
+import { assertUniqueDependentIds, validateEnrollmentCoverageSelection } from './enrollment-coverage-validator.js';
 import { hashPassword } from './password-service.js';
 import type { DbAdapter } from './db.types.js';
 
@@ -500,6 +501,7 @@ export class InMemoryDb implements DbAdapter {
 
   createEnrollmentDraft(input: CreateEnrollmentDraftInput): EnrollmentRecord {
     this.assertEmployeeInTenant(input.employeeUserId, input.tenantId);
+    assertUniqueDependentIds(input.dependentIds);
 
     const planYear = this.planYears.find((candidate) => candidate.id === input.planYearId && candidate.tenantId === input.tenantId);
     if (!planYear) {
@@ -539,12 +541,22 @@ export class InMemoryDb implements DbAdapter {
       });
     }
 
+    const selectedDependents: DependentRecord[] = [];
     for (const dependentId of input.dependentIds) {
       const dependent = this.dependents.find((candidate) => candidate.id === dependentId);
       if (!dependent || dependent.tenantId !== input.tenantId || dependent.employeeUserId !== input.employeeUserId) {
         throw new HttpError(422, `Dependent ${dependentId} does not belong to employee`);
       }
+      selectedDependents.push(dependent);
     }
+
+    validateEnrollmentCoverageSelection({
+      electionCoverageTiers: input.elections.map((election) => election.coverageTier),
+      dependents: selectedDependents.map((dependent) => ({
+        id: dependent.id,
+        relationship: dependent.relationship,
+      })),
+    });
 
     const now = this.nowIso();
     const enrollment: EnrollmentRecord = {
@@ -600,12 +612,24 @@ export class InMemoryDb implements DbAdapter {
 
     const effectiveDate = this.calculateEffectiveDate(profile.hireDate);
 
+    const selectedDependents: DependentRecord[] = [];
     for (const dependentId of enrollment.dependentIds) {
       const dependent = this.dependents.find((candidate) => candidate.id === dependentId);
       if (!dependent) {
         throw new HttpError(422, `Dependent ${dependentId} not found`);
       }
+      selectedDependents.push(dependent);
+    }
 
+    validateEnrollmentCoverageSelection({
+      electionCoverageTiers: enrollment.elections.map((election) => election.coverageTier),
+      dependents: selectedDependents.map((dependent) => ({
+        id: dependent.id,
+        relationship: dependent.relationship,
+      })),
+    });
+
+    for (const dependent of selectedDependents) {
       if (dependent.relationship === 'CHILD') {
         const childAge = calculateAgeOnDate(parseDate(dependent.dob), parseDate(effectiveDate));
         if (childAge >= 26) {

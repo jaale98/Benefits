@@ -13,6 +13,8 @@ This backend scaffold implements:
 - Tenant guard middleware
 - PostgreSQL-backed repository service (default runtime)
 - Transaction-safe enrollment submit flow
+- Coverage-tier validation against selected dependents
+- Draft enrollments with `effectiveDate=null` until submit
 - Core tenant/admin/employee MVP endpoints
 - In-memory provider for integration tests
 

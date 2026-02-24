@@ -26,10 +26,15 @@ export function App() {
 
   const [loginEmail, setLoginEmail] = useState(DEFAULT_LOGIN_EMAIL);
   const [loginPassword, setLoginPassword] = useState(DEFAULT_LOGIN_PASSWORD);
+  const [signupInviteCode, setSignupInviteCode] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
 
   const [resetEmail, setResetEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [resetNewPassword, setResetNewPassword] = useState('');
+  const [latestCompanyAdminInviteCode, setLatestCompanyAdminInviteCode] = useState('');
+  const [latestEmployeeInviteCode, setLatestEmployeeInviteCode] = useState('');
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantUsers, setTenantUsers] = useState<User[]>([]);
@@ -66,6 +71,10 @@ export function App() {
 
   const [employeeOnlyEmployeeCost, setEmployeeOnlyEmployeeCost] = useState('120');
   const [employeeOnlyEmployerCost, setEmployeeOnlyEmployerCost] = useState('480');
+  const [employeeSpouseEmployeeCost, setEmployeeSpouseEmployeeCost] = useState('240');
+  const [employeeSpouseEmployerCost, setEmployeeSpouseEmployerCost] = useState('760');
+  const [employeeChildrenEmployeeCost, setEmployeeChildrenEmployeeCost] = useState('260');
+  const [employeeChildrenEmployerCost, setEmployeeChildrenEmployerCost] = useState('840');
   const [familyEmployeeCost, setFamilyEmployeeCost] = useState('420');
   const [familyEmployerCost, setFamilyEmployerCost] = useState('980');
 
@@ -210,6 +219,27 @@ export function App() {
     });
   }
 
+  async function handleSignupInvite(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    await runAction(
+      'Signup with invite',
+      () =>
+        api.signupInvite({
+          inviteCode: signupInviteCode,
+          email: signupEmail,
+          password: signupPassword,
+        }),
+      (response) => {
+        setUser(response.user ?? null);
+        setResetEmail(signupEmail);
+        setSignupInviteCode('');
+        setSignupEmail('');
+        setSignupPassword('');
+      },
+    );
+  }
+
   async function handleLogout(): Promise<void> {
     await runAction('Logout', () => api.logout(), () => {
       setUser(null);
@@ -220,6 +250,8 @@ export function App() {
       setPlans([]);
       setDependents([]);
       setEnrollments([]);
+      setLatestCompanyAdminInviteCode('');
+      setLatestEmployeeInviteCode('');
     });
   }
 
@@ -248,7 +280,13 @@ export function App() {
       return;
     }
 
-    await runAction('Create company admin invite', () => api.createCompanyAdminInvite(selectedTenantId, { maxUses: 1 }));
+    await runAction(
+      'Create company admin invite',
+      () => api.createCompanyAdminInvite(selectedTenantId, { maxUses: 1 }),
+      (response) => {
+        setLatestCompanyAdminInviteCode(response.inviteCode?.code ?? '');
+      },
+    );
   }
 
   async function handleCreateEmployeeInvite(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -257,10 +295,15 @@ export function App() {
       return;
     }
 
-    await runAction('Create employee invite', () =>
-      api.createEmployeeInvite(tenantId, {
-        maxUses: Number(employeeInviteMaxUses),
-      }),
+    await runAction(
+      'Create employee invite',
+      () =>
+        api.createEmployeeInvite(tenantId, {
+          maxUses: Number(employeeInviteMaxUses),
+        }),
+      (response) => {
+        setLatestEmployeeInviteCode(response.inviteCode?.code ?? '');
+      },
     );
   }
 
@@ -332,6 +375,16 @@ export function App() {
             coverageTier: 'EMPLOYEE_ONLY',
             employeeMonthlyCost: Number(employeeOnlyEmployeeCost),
             employerMonthlyCost: Number(employeeOnlyEmployerCost),
+          },
+          {
+            coverageTier: 'EMPLOYEE_SPOUSE',
+            employeeMonthlyCost: Number(employeeSpouseEmployeeCost),
+            employerMonthlyCost: Number(employeeSpouseEmployerCost),
+          },
+          {
+            coverageTier: 'EMPLOYEE_CHILDREN',
+            employeeMonthlyCost: Number(employeeChildrenEmployeeCost),
+            employerMonthlyCost: Number(employeeChildrenEmployerCost),
           },
           {
             coverageTier: 'FAMILY',
@@ -482,6 +535,7 @@ export function App() {
               </select>
               <button disabled={loading || !selectedTenantId}>Create Invite</button>
             </form>
+            {latestCompanyAdminInviteCode && <p>Latest code: {latestCompanyAdminInviteCode}</p>}
           </section>
         </>
       );
@@ -497,6 +551,7 @@ export function App() {
               <input value={employeeInviteMaxUses} onChange={(event) => setEmployeeInviteMaxUses(event.target.value)} required />
               <button disabled={loading}>Create Invite</button>
             </form>
+            {latestEmployeeInviteCode && <p>Latest code: {latestEmployeeInviteCode}</p>}
           </section>
 
           <section className="panel">
@@ -570,6 +625,24 @@ export function App() {
               <input value={employeeOnlyEmployeeCost} onChange={(event) => setEmployeeOnlyEmployeeCost(event.target.value)} required />
               <label>Employee Only - Employer Cost</label>
               <input value={employeeOnlyEmployerCost} onChange={(event) => setEmployeeOnlyEmployerCost(event.target.value)} required />
+
+              <label>Employee + Spouse - Employee Cost</label>
+              <input value={employeeSpouseEmployeeCost} onChange={(event) => setEmployeeSpouseEmployeeCost(event.target.value)} required />
+              <label>Employee + Spouse - Employer Cost</label>
+              <input value={employeeSpouseEmployerCost} onChange={(event) => setEmployeeSpouseEmployerCost(event.target.value)} required />
+
+              <label>Employee + Child(ren) - Employee Cost</label>
+              <input
+                value={employeeChildrenEmployeeCost}
+                onChange={(event) => setEmployeeChildrenEmployeeCost(event.target.value)}
+                required
+              />
+              <label>Employee + Child(ren) - Employer Cost</label>
+              <input
+                value={employeeChildrenEmployerCost}
+                onChange={(event) => setEmployeeChildrenEmployerCost(event.target.value)}
+                required
+              />
 
               <label>Family - Employee Cost</label>
               <input value={familyEmployeeCost} onChange={(event) => setFamilyEmployeeCost(event.target.value)} required />
@@ -744,6 +817,19 @@ export function App() {
             <label>Password</label>
             <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} required />
             <button disabled={loading}>Sign In</button>
+          </form>
+
+          <hr />
+
+          <h2>Signup with Invite</h2>
+          <form onSubmit={handleSignupInvite}>
+            <label>Invite Code</label>
+            <input value={signupInviteCode} onChange={(event) => setSignupInviteCode(event.target.value)} required />
+            <label>Email</label>
+            <input value={signupEmail} onChange={(event) => setSignupEmail(event.target.value)} required />
+            <label>Password</label>
+            <input type="password" value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} required />
+            <button disabled={loading}>Sign Up</button>
           </form>
 
           <hr />

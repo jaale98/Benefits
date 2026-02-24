@@ -18,6 +18,7 @@ import type {
   UserRecord,
 } from '../types/domain.js';
 import { HttpError } from '../types/http-error.js';
+import { assertUniqueDependentIds, validateEnrollmentCoverageSelection } from './enrollment-coverage-validator.js';
 import { hashPassword } from './password-service.js';
 import { assertSchemaUpToDate, runMigrations } from './migration-runner.js';
 import type {
@@ -537,6 +538,7 @@ export class PostgresDb implements DbAdapter {
   async createEnrollmentDraft(input: CreateEnrollmentDraftInput): Promise<EnrollmentRecord> {
     return this.withTransaction(async (client) => {
       await this.assertEmployeeInTenant(client, input.employeeUserId, input.tenantId);
+      assertUniqueDependentIds(input.dependentIds);
 
       const planYearResult = await client.query(`SELECT id FROM plan_years WHERE id = $1 AND tenant_id = $2`, [
         input.planYearId,
@@ -554,10 +556,32 @@ export class PostgresDb implements DbAdapter {
         seenPlanTypes.add(election.planType);
       }
 
+      const selectedDependents =
+        input.dependentIds.length === 0
+          ? []
+          : (
+              await client.query<{ id: string; relationship: DependentRecord['relationship'] }>(
+                `SELECT id, relationship
+                 FROM dependents
+                 WHERE tenant_id = $1
+                   AND employee_user_id = $2
+                   AND id = ANY($3::uuid[])`,
+                [input.tenantId, input.employeeUserId, input.dependentIds],
+              )
+            ).rows;
+      if (selectedDependents.length !== input.dependentIds.length) {
+        throw new HttpError(422, 'One or more dependentIds do not belong to employee');
+      }
+
+      validateEnrollmentCoverageSelection({
+        electionCoverageTiers: input.elections.map((election) => election.coverageTier),
+        dependents: selectedDependents,
+      });
+
       const enrollmentResult = await client.query(
         `INSERT INTO enrollments
           (tenant_id, employee_user_id, plan_year_id, status, effective_date)
-         VALUES ($1, $2, $3, 'DRAFT', CURRENT_DATE)
+         VALUES ($1, $2, $3, 'DRAFT', NULL)
          RETURNING id`,
         [input.tenantId, input.employeeUserId, input.planYearId],
       );
@@ -610,16 +634,6 @@ export class PostgresDb implements DbAdapter {
       }
 
       for (const dependentId of input.dependentIds) {
-        const dependentResult = await client.query(
-          `SELECT id
-           FROM dependents
-           WHERE id = $1 AND tenant_id = $2 AND employee_user_id = $3`,
-          [dependentId, input.tenantId, input.employeeUserId],
-        );
-        if (!dependentResult.rowCount) {
-          throw new HttpError(422, `Dependent ${dependentId} does not belong to employee`);
-        }
-
         await client.query(
           `INSERT INTO enrollment_dependents (enrollment_id, dependent_id)
            VALUES ($1, $2)`,
@@ -697,16 +711,33 @@ export class PostgresDb implements DbAdapter {
 
       const effectiveDate = calculateEffectiveDate(profile.hire_date);
 
-      const childDependents = await client.query(
-        `SELECT d.id, d.dob
+      const dependentRows = await client.query(
+        `SELECT d.id, d.dob, d.relationship
          FROM enrollment_dependents ed
          JOIN dependents d ON d.id = ed.dependent_id
-         WHERE ed.enrollment_id = $1
-           AND d.relationship = 'CHILD'`,
+         WHERE ed.enrollment_id = $1`,
         [enrollment.id],
       );
 
-      for (const child of childDependents.rows as Array<{ id: string; dob: string }>) {
+      const coverageTierRows = await client.query<{ coverage_tier: EnrollmentElectionSnapshot['coverageTier'] }>(
+        `SELECT coverage_tier
+         FROM enrollment_elections
+         WHERE enrollment_id = $1`,
+        [enrollment.id],
+      );
+
+      validateEnrollmentCoverageSelection({
+        electionCoverageTiers: coverageTierRows.rows.map((row) => row.coverage_tier),
+        dependents: (dependentRows.rows as Array<{ id: string; relationship: DependentRecord['relationship'] }>).map((row) => ({
+          id: row.id,
+          relationship: row.relationship,
+        })),
+      });
+
+      for (const child of dependentRows.rows as Array<{ id: string; dob: string; relationship: DependentRecord['relationship'] }>) {
+        if (child.relationship !== 'CHILD') {
+          continue;
+        }
         const childAge = calculateAgeOnDate(parseDate(child.dob), parseDate(effectiveDate));
         if (childAge >= 26) {
           throw new HttpError(422, `Dependent ${child.id} is age ${childAge}; child dependents must be under 26`);
@@ -1126,7 +1157,7 @@ function mapEnrollment(
     employeeUserId: row.employee_user_id as string,
     planYearId: row.plan_year_id as string,
     status: row.status as EnrollmentRecord['status'],
-    effectiveDate: toDateOnlyString(row.effective_date),
+    effectiveDate: row.effective_date ? toDateOnlyString(row.effective_date) : null,
     submittedAt: row.submitted_at ? toIsoString(row.submitted_at) : null,
     confirmationCode: (row.confirmation_code as string | null) ?? null,
     elections,

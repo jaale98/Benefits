@@ -5,6 +5,8 @@ Role-aware React shell for:
 - `FULL_ADMIN` tenant + company-admin invite workflows
 - `COMPANY_ADMIN` employee invite/profile + plan year/plan/premiums workflows
 - `EMPLOYEE` profile + dependent + enrollment draft/submit workflows
+- Invite-based self-signup from the UI
+- Premium configuration for all four coverage tiers
 
 ## Run
 

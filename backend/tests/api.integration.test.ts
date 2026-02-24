@@ -133,6 +133,8 @@ describe('API integration (MVP core flows)', () => {
       .send({
         tiers: [
           { coverageTier: 'EMPLOYEE_ONLY', employeeMonthlyCost: 120, employerMonthlyCost: 480 },
+          { coverageTier: 'EMPLOYEE_SPOUSE', employeeMonthlyCost: 240, employerMonthlyCost: 760 },
+          { coverageTier: 'EMPLOYEE_CHILDREN', employeeMonthlyCost: 260, employerMonthlyCost: 840 },
           { coverageTier: 'FAMILY', employeeMonthlyCost: 420, employerMonthlyCost: 980 },
         ],
       });
@@ -155,6 +157,17 @@ describe('API integration (MVP core flows)', () => {
 
     expect(employeeProfile.status).toBe(200);
 
+    const spouseTierWithoutSpouse = await request(app)
+      .post(`/tenants/${tenantAId}/employee/enrollments/draft`)
+      .set('Authorization', `Bearer ${employeeToken}`)
+      .send({
+        planYearId,
+        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_SPOUSE' }],
+        dependentIds: [],
+      });
+
+    expect(spouseTierWithoutSpouse.status).toBe(422);
+
     const overAgeChild = await request(app)
       .post(`/tenants/${tenantAId}/employee/dependents`)
       .set('Authorization', `Bearer ${employeeToken}`)
@@ -172,11 +185,12 @@ describe('API integration (MVP core flows)', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         planYearId,
-        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_ONLY' }],
+        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_CHILDREN' }],
         dependentIds: [overAgeChild.body.dependent.id],
       });
 
     expect(draftWithOverAgeChild.status).toBe(201);
+    expect(draftWithOverAgeChild.body.enrollment.effectiveDate).toBeNull();
 
     const submitWithOverAgeChild = await request(app)
       .post(`/tenants/${tenantAId}/employee/enrollments/${draftWithOverAgeChild.body.enrollment.id}/submit`)
@@ -202,7 +216,7 @@ describe('API integration (MVP core flows)', () => {
       .set('Authorization', `Bearer ${employeeToken}`)
       .send({
         planYearId,
-        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_ONLY' }],
+        elections: [{ planType: 'MEDICAL', planId, coverageTier: 'EMPLOYEE_CHILDREN' }],
         dependentIds: [underAgeChild.body.dependent.id],
       });
 
