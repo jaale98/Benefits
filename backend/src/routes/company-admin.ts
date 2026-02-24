@@ -30,6 +30,10 @@ const listPlansQuerySchema = z.object({
   planYearId: z.string().uuid().optional(),
 });
 
+const listSecurityEventsSchema = z.object({
+  limit: z.coerce.number().int().positive().max(500).optional(),
+});
+
 const createPlanYearSchema = z.object({
   name: z.string().min(1).max(64),
   startDate: z.string().date(),
@@ -65,6 +69,18 @@ companyAdminRouter.get(
     const query = listUsersQuerySchema.parse(req.query);
     const users = await db.listTenantUsers(req.params.tenantId, query.role);
     res.json({ users });
+  }),
+);
+
+companyAdminRouter.get(
+  '/security-events',
+  asyncHandler(async (req, res) => {
+    const query = listSecurityEventsSchema.parse(req.query);
+    const events = await db.listSecurityEvents({
+      tenantId: req.params.tenantId,
+      limit: query.limit,
+    });
+    res.json({ events });
   }),
 );
 

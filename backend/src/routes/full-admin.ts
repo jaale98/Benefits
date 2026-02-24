@@ -15,6 +15,11 @@ const createCompanyAdminInviteSchema = z.object({
   maxUses: z.number().int().positive().optional(),
 });
 
+const listSecurityEventsSchema = z.object({
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  tenantId: z.string().uuid().optional(),
+});
+
 const fullAdminRouter = Router();
 
 fullAdminRouter.use(authenticate, requireRoles('FULL_ADMIN'));
@@ -24,6 +29,19 @@ fullAdminRouter.get(
   asyncHandler(async (_req, res) => {
     const tenants = await db.listTenants();
     res.json({ tenants });
+  }),
+);
+
+fullAdminRouter.get(
+  '/security-events',
+  asyncHandler(async (req, res) => {
+    const query = listSecurityEventsSchema.parse(req.query);
+    const events = await db.listSecurityEvents({
+      limit: query.limit,
+      tenantId: query.tenantId,
+    });
+
+    res.json({ events });
   }),
 );
 

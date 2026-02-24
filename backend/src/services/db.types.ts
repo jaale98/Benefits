@@ -13,6 +13,7 @@ import type {
   PlanType,
   PlanYearRecord,
   PasswordResetTokenRecord,
+  SecurityEventRecord,
   TenantRecord,
   UserRecord,
 } from '../types/domain.js';
@@ -119,6 +120,16 @@ export interface CreatePasswordResetTokenInput {
   expiresAt: string;
 }
 
+export interface CreateSecurityEventInput {
+  userId?: string | null;
+  tenantId?: string | null;
+  eventType: string;
+  severity?: 'INFO' | 'WARN' | 'ERROR';
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export type MaybePromise<T> = T | Promise<T>;
 
 export interface DbAdapter {
@@ -155,4 +166,6 @@ export interface DbAdapter {
   listPlans(tenantId: string, planYearId?: string): MaybePromise<PlanRecord[]>;
   listEmployeeDependents(tenantId: string, employeeUserId: string): MaybePromise<DependentRecord[]>;
   listEmployeeEnrollments(tenantId: string, employeeUserId: string): MaybePromise<EnrollmentRecord[]>;
+  createSecurityEvent(input: CreateSecurityEventInput): MaybePromise<SecurityEventRecord>;
+  listSecurityEvents(input?: { tenantId?: string; limit?: number }): MaybePromise<SecurityEventRecord[]>;
 }

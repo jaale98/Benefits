@@ -13,6 +13,7 @@ import type {
   PlanPremiumRecord,
   PlanRecord,
   PlanYearRecord,
+  SecurityEventRecord,
   TenantRecord,
   UserRecord,
 } from '../types/domain.js';
@@ -27,6 +28,7 @@ import type {
   CreatePasswordResetTokenInput,
   CreatePlanInput,
   CreatePlanYearInput,
+  CreateSecurityEventInput,
   DbAdapter,
   EmployeeProfileInput,
   RevokeAuthSessionInput,
@@ -226,6 +228,42 @@ export class PostgresDb implements DbAdapter {
       enrollments.push(await this.getEnrollment(this.pool, row.id));
     }
     return enrollments;
+  }
+
+  async createSecurityEvent(input: CreateSecurityEventInput): Promise<SecurityEventRecord> {
+    const result = await this.pool.query(
+      `INSERT INTO security_events\n        (user_id, tenant_id, event_type, severity, ip_address, user_agent, metadata)\n       VALUES ($1, $2, $3, $4, $5, $6, $7)\n       RETURNING\n         id, user_id, tenant_id, event_type, severity,\n         ip_address, user_agent, metadata, created_at`,
+      [
+        input.userId ?? null,
+        input.tenantId ?? null,
+        input.eventType,
+        input.severity ?? 'INFO',
+        input.ipAddress ?? null,
+        input.userAgent ?? null,
+        input.metadata ? JSON.stringify(input.metadata) : null,
+      ],
+    );
+
+    return mapSecurityEvent(result.rows[0]);
+  }
+
+  async listSecurityEvents(input?: { tenantId?: string; limit?: number }): Promise<SecurityEventRecord[]> {
+    const limit = Math.min(Math.max(input?.limit ?? 100, 1), 500);
+    const values: unknown[] = [];
+    let whereClause = '';
+
+    if (input?.tenantId) {
+      values.push(input.tenantId);
+      whereClause = `WHERE tenant_id = $${values.length}`;
+    }
+
+    values.push(limit);
+    const result = await this.pool.query(
+      `SELECT\n         id, user_id, tenant_id, event_type, severity,\n         ip_address, user_agent, metadata, created_at\n       FROM security_events\n       ${whereClause}\n       ORDER BY created_at DESC\n       LIMIT $${values.length}`,
+      values,
+    );
+
+    return result.rows.map(mapSecurityEvent);
   }
 
   toAuthUser(user: UserRecord): AuthUser {
@@ -1052,6 +1090,20 @@ function mapPasswordResetToken(row: Record<string, unknown>): PasswordResetToken
     createdAt: toIsoString(row.created_at),
     expiresAt: toIsoString(row.expires_at),
     usedAt: row.used_at ? toIsoString(row.used_at) : null,
+  };
+}
+
+function mapSecurityEvent(row: Record<string, unknown>): SecurityEventRecord {
+  return {
+    id: row.id as string,
+    userId: (row.user_id as string | null) ?? null,
+    tenantId: (row.tenant_id as string | null) ?? null,
+    eventType: row.event_type as string,
+    severity: row.severity as SecurityEventRecord['severity'],
+    ipAddress: row.ip_address ? String(row.ip_address) : null,
+    userAgent: (row.user_agent as string | null) ?? null,
+    metadata: row.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : null,
+    createdAt: toIsoString(row.created_at),
   };
 }
 

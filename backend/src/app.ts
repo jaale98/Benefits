@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { env } from './config/env.js';
+import { attachRequestContext } from './middleware/request-context.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { authRouter } from './routes/auth.js';
 import { companyAdminRouter } from './routes/company-admin.js';
@@ -16,6 +17,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(attachRequestContext);
 app.use(express.json());
 
 app.use('/health', healthRouter);

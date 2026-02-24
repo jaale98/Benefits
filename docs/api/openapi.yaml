@@ -219,6 +219,35 @@ components:
           type: string
           format: date-time
 
+    SecurityEvent:
+      type: object
+      required: [id, eventType, severity, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: [string, 'null']
+          format: uuid
+        tenantId:
+          type: [string, 'null']
+          format: uuid
+        eventType:
+          type: string
+        severity:
+          type: string
+          enum: [INFO, WARN, ERROR]
+        ipAddress:
+          type: [string, 'null']
+        userAgent:
+          type: [string, 'null']
+        metadata:
+          type: [object, 'null']
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
     EmployeeProfileInput:
       type: object
       required:
@@ -840,6 +869,39 @@ paths:
                   inviteCode:
                     $ref: '#/components/schemas/InviteCode'
 
+  /full-admin/security-events:
+    get:
+      tags: [Full Admin]
+      summary: List security events across tenants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Security events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SecurityEvent'
+
   /tenants/{tenantId}/company-admin/users:
     get:
       tags: [Company Admin]
@@ -871,6 +933,39 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/User'
+
+  /tenants/{tenantId}/company-admin/security-events:
+    get:
+      tags: [Company Admin]
+      summary: List security events for tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Tenant security events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SecurityEvent'
 
   /tenants/{tenantId}/company-admin/invite-codes/employee:
     post:

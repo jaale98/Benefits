@@ -7,6 +7,8 @@ This backend scaffold implements:
 - Password reset request/confirm flow
 - Session invalidation (`/auth/logout`, `/auth/logout-all`)
 - Login brute-force lockout guard
+- Structured JSON request logs with request IDs
+- Persisted security event stream (`security_events`)
 - RBAC middleware
 - Tenant guard middleware
 - PostgreSQL-backed repository service (default runtime)
@@ -64,3 +66,4 @@ Use these credentials with `POST /auth/login`.
 - Database migration SQLs are in `/db/migrations`.
 - API contract is in `/docs/api/openapi.yaml`.
 - Integration tests: `npm test`.
+- Postgres integration tests: `npm run test:postgres` (requires `DATABASE_URL`).

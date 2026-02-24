@@ -18,6 +18,7 @@ import type {
   PlanType,
   PlanYearRecord,
   TenantRecord,
+  SecurityEventRecord,
   UserRecord,
 } from '../types/domain.js';
 import { HttpError } from '../types/http-error.js';
@@ -122,6 +123,7 @@ export class InMemoryDb implements DbAdapter {
   private enrollments: EnrollmentRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private passwordResetTokens: PasswordResetTokenRecord[] = [];
+  private securityEvents: SecurityEventRecord[] = [];
 
   async init(): Promise<void> {
     if (this.initialized) {
@@ -738,6 +740,39 @@ export class InMemoryDb implements DbAdapter {
     }
     user.passwordHash = passwordHash;
     user.updatedAt = this.nowIso();
+  }
+
+  createSecurityEvent(input: {
+    userId?: string | null;
+    tenantId?: string | null;
+    eventType: string;
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): SecurityEventRecord {
+    const event: SecurityEventRecord = {
+      id: uuidv4(),
+      userId: input.userId ?? null,
+      tenantId: input.tenantId ?? null,
+      eventType: input.eventType,
+      severity: input.severity ?? 'INFO',
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
+      metadata: input.metadata ?? null,
+      createdAt: this.nowIso(),
+    };
+
+    this.securityEvents.push(event);
+    return event;
+  }
+
+  listSecurityEvents(input?: { tenantId?: string; limit?: number }): SecurityEventRecord[] {
+    const limit = input?.limit ?? 100;
+    return this.securityEvents
+      .filter((event) => !input?.tenantId || event.tenantId === input.tenantId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
   }
 
   private assertEmployeeInTenant(employeeUserId: string, tenantId: string): void {

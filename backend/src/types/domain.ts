@@ -49,6 +49,18 @@ export interface PasswordResetTokenRecord {
   usedAt: string | null;
 }
 
+export interface SecurityEventRecord {
+  id: string;
+  userId: string | null;
+  tenantId: string | null;
+  eventType: string;
+  severity: 'INFO' | 'WARN' | 'ERROR';
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface InviteCodeRecord {
   id: string;
   tenantId: string;
