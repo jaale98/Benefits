@@ -1,0 +1,9 @@
+# Node
+node_modules/
+
+# Backend artifacts
+/backend/dist/
+/backend/.env
+
+# OS/editor
+.DS_Store
